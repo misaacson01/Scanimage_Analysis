@@ -12,6 +12,7 @@ channel_options.nch = 4; %number of channels in the source file
 channel_options.chsh = [2 3 4]; %channels to use for registering shifts
 channel_options.pr = 'max'; %projection type to use across channels
 opts_tiff.append = false; opts_tiff.big = true; opts_tiff.message = false;
+[optimizer,metric] = imregconfig('multimodal');
 
 %create directories
 num_dirs = length(exp_dirs);
@@ -43,14 +44,13 @@ tc = [0    0    0    1    0    0    0    0    ]; %texas red (maybe some in cham 
 nc = [0.2  0.1  0.1  0.1  0.2  0.1  0.1  0.1  ]; %pmt noise
 unmixingCoeffs = [gc', yc', rc', tc', nc'];
 
-
 %pre-process imaging for each directory
-for d = 2:num_dirs
+for d = 1:num_dirs
     dstr = num2str(d);
-    fprintf('Pre-processing complete.\n\n');
+    fprintf(['Starting pre-processing for exp ' dstr ' (of ' num2str(num_dirs) '):\n']);
     
     %concatentate all functional imaging together into "functional" folder
-    fprintf('concatenating files...')
+    fprintf('Concatenating files (this can take some time)... ')
     filenames = dir(fullfile(exp_dirs{d},'stim','*.tif'));
     ns = length(filenames);
     filenames(ns+1) = dir(fullfile(exp_dirs{d},'spont*.tif'));
@@ -80,10 +80,15 @@ for d = 2:num_dirs
     fprintf('Starting fluorophore unmixing...');
     sats = read_file(fullfile(exp_dirs{d},'1030_00001.tif'));
     ncf = size(sats,3)/4;
-    sats = reshape(sats,[iheight iwidth 4 ncf]);
-    cham = reshape(functional(:,:,1:(4*ncf)),[iheight iwidth 4 ncf]);
-    mixed = mean(cham,4);
-    mixed(:,:,5:8) = mean(sats,4);
+    sats = mean(reshape(sats,[iheight iwidth 4 ncf]),4);
+    cham = mean(reshape(functional(:,:,1:(4*ncf)),[iheight iwidth 4 ncf]),4);
+    tform = imregtform(max(sats(:,:,channel_options.chsh),[],3),max(cham(:,:,channel_options.chsh),[],3),'affine',optimizer,metric);
+    sameAsInput = affineOutputView([iheight iwidth],tform,'BoundsStyle','SameAsInput');
+    for c = 1:4
+        sats(:,:,c) = imwarp(sats(:,:,c),tform,'OutputView',sameAsInput);
+    end
+    mixed = cham;
+    mixed(:,:,5:8) = sats;
     saveastiff(mixed,fullfile(save_dir,dstr,'mixed.tif'));
     mixed = uint16(mixed);
     
