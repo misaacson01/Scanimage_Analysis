@@ -1,7 +1,7 @@
 
 
 %% settings
-analysis_name = '22_5_9_ly6g_test';
+analysis_name = '22_5_8_9_ly6g_test';
 exp_dirs{1} = 'C:\Users\misaa\Desktop\2022-05-08 fulltest_beforeLy6g_22_5_8'; %e.g. baseline
 exp_dirs{2} = 'C:\Users\misaa\Desktop\2022-05-09 fulltest_afterLy6g_22_5_9'; %e.g. post-injection
 
@@ -36,19 +36,32 @@ for d = 1:num_dirs
     vstruct(d) = vs;
 end
 
-%set unmixing coefficients
-gc = [0    0.3  0.6  0    0    0.05 0.05 0    ]; %gcamp6s
-yc = [0    0.05 0.3  0    0    0.1  0.5  0.05 ]; %eyfp
-rc = [0    0    0    0.04 0    0.04 0.38 0.54 ]; %mruby2
-tc = [0    0    0    1    0    0    0    0    ]; %texas red (maybe some in cham ch4?)
-nc = [0.2  0.1  0.1  0.1  0.2  0.1  0.1  0.1  ]; %pmt noise
+%set cell-type unmixing coefficients
+gc = [0     0.3   0.6   0     0     0.05  0.05  0    ]; %gcamp6s
+yc = [0     0.05  0.3   0     0     0.1   0.5   0.05 ]; %eyfp
+rc = [0     0     0     0.04  0     0.04  0.38  0.54 ]; %mruby2
+tc = [0     0     0     1     0     0     0     0    ]; %texas red (maybe some in sats ch4?)
+nc = [0.125 0.125 0.125 0.125 0.125 0.125 0.125 0.125]; %pmt noise
 unmixingCoeffs = [gc', yc', rc', tc', nc'];
 
-%pre-process imaging for each directory
+%set 780 nm unmixing coefficients
+%%%%%%%%%%%fix these
+% bc = [1    0     0     0    ];
+% gc = [0    0.35  0.65  0    ];
+% yc = [0    0.15  0.85  0    ];
+% tc = [0    0.05  0.03  0.65 ];
+% nc = [0.25 0.25  0.25  0.25 ];
+% unmixingCoeffs_780 = [bc', gc', yc', tc', nc'];
+
+%set 920 nm unmixing coefficients
+% unmixingCoeffs_920 = unmixingCoeffs(1:4,:)/repmat(sum(unmixingCoeffs(1:4,:)),[4 1]);
+
+%% pre-process imaging for each directory
 for d = 1:num_dirs
     dstr = num2str(d);
     fprintf(['Starting pre-processing for exp ' dstr ' (of ' num2str(num_dirs) '):\n']);
-    
+   
+    %%%% functional imaging %%%%
     %concatentate all functional imaging together into "functional" folder
     fprintf('Concatenating files (this can take some time)... ')
     filenames = dir(fullfile(exp_dirs{d},'stim','*.tif'));
@@ -57,13 +70,16 @@ for d = 1:num_dirs
     functional = read_file(fullfile(filenames(ns+1).folder,filenames(ns+1).name));
     [iheight, iwidth, nspf] = size(functional);
     nspf = nspf/4; %number of spontaneous frames
+    
     tmp = read_file(fullfile(filenames(1).folder,filenames(1).name));
-    nsf = size(tmp,3)/4; %number of stim frames
-    functional(:,:,(1+(nspf*4)):((nspf*4)+(ns*nsf*4))) = nan; %pre-allocate space for stim frames
+    nstf = size(tmp,3)/4; %number of stim trial frames
+    functional(:,:,(1+(nspf*4)):((nspf*4)+(ns*nstf*4))) = nan; %pre-allocate space for stim frames
     for f = 1:ns
         tmp = read_file(fullfile(filenames(f).folder,filenames(f).name));
-        functional(:,:,1+(nspf*4)+((f-1)*nsf*4):(nspf*4)+(f*nsf*4)) = tmp;
+        functional(:,:,1+(nspf*4)+((f-1)*nstf*4):(nspf*4)+(f*nstf*4)) = tmp;
     end
+    nsf = (size(functional,3)/4) - nspf; %number of stim frames (all trials)
+    
     imageName = fullfile(save_dir,dstr,'functional.tif');
     saveastiff(functional,imageName,opts_tiff);
     fprintf('done.\n')
@@ -76,7 +92,8 @@ for d = 1:num_dirs
     imageName = fullfile(save_dir,dstr,'MC functional','CH2_functional.tif');
     copyfile(imageName,fullfile(save_dir,dstr,'suite2p','CH2_functional.tif'))
     
-    %load imaging for color unmixing (create 8ch mixed)
+    %spectral unmixing for excitatory/inhibitory neurons
+    %load images for color unmixing (create 8ch mixed)
     fprintf('Starting fluorophore unmixing...');
     sats = read_file(fullfile(exp_dirs{d},'1030_00001.tif'));
     ncf = size(sats,3)/4;
@@ -89,14 +106,7 @@ for d = 1:num_dirs
     end
     mixed = cham;
     mixed(:,:,5:8) = sats;
-    saveastiff(mixed,fullfile(save_dir,dstr,'mixed.tif'));
     mixed = uint16(mixed);
-    
-    %save metadata
-    mdata(d).num_stims = ns;
-    mdata(d).num_stim_frames = nsf;
-    mdata(d).num_spont_frames = nspf;
-    mdata(d).num_color_frames = ncf;
     
     %test out histogram matching
     % figure()
@@ -131,15 +141,81 @@ for d = 1:num_dirs
     end
     Unmixed = reshape(Unmixed,[numFluorophores,iheight,iwidth,numFrames,numSlices]); % Expand matrix to 5D
     Unmixed = permute(Unmixed,[2,3,1,4,5]);               % volume matrix re-ordered to [y, x, channel, frame, slice]
-    saveastiff(Unmixed,fullfile(save_dir,dstr,'unmixed.tif'),opts_tiff);
+    saveastiff(Unmixed,fullfile(save_dir,dstr,'celltypes_unmixed.tif'),opts_tiff);
     
     %save png of eyfp/mruby yellow/red image 
     colorIm = zeros([iheight iwidth 3]);
     colorIm(:,:,1) = mean(Unmixed(:,:,[2 3]),3);
     colorIm(:,:,2) = Unmixed(:,:,2)/2;
     imwrite(uint8(100*colorIm/prctile(colorIm,98,'all')),fullfile(save_dir,dstr,'YellowRed.tif'));
+    
+%     %%%% spectral unmixing of stacks for plaques, vessels %%%%
+%     %plaques stack
+%     tmp = read_file(fullfile(exp_dirs{d},'plaques_00001.tif'));
+%     numChannels = 4;
+%     [stackheight, stackwidth, numFrames] = size(tmp);
+%     numFrames = numFrames/4;
+%     numSlices = 1;
+%     mixed = uint16(reshape(tmp,[stackheight stackwidth numChannels numFrames]));
+%     mixed = permute(mixed,[3,1,2,4,5]);               % Order matrix [channel, y, x, frame, slice]
+%     mixed = reshape(mixed,numChannels,[]);                      % Flatten matrix
+%     numPts = size(mixed,2);
+%     numFluorophores = size(unmixingCoeffs_780,2);
+%     Unmixed = nan(numFluorophores,numPts);
+%     for i = 1:numPts
+%         Unmixed(:,i) = cast(lsqnonneg(unmixingCoeffs_780,double(mixed(:,i))),'int16');  % Use nonnegative least squares to solve system
+%     end
+%     Unmixed = reshape(Unmixed,[numFluorophores,stackheight,stackwidth,numFrames,numSlices]); % Expand matrix to 5D
+%     Unmixed = permute(Unmixed,[2,3,4,1,5]);               % volume matrix re-ordered to [y, x, frame, channel, slice]
+%     saveastiff(Unmixed(:,:,:,1),fullfile(save_dir,dstr,'plaques_unmixed.tif'),opts_tiff);
+%     %%
+%     %vessels stack
+%     tmp = read_file(fullfile(exp_dirs{d},'vessels_00001.tif'));
+%     numChannels = 4;
+%     [stackheight, stackwidth, numFrames] = size(tmp);
+%     numFrames = numFrames/4;
+%     numSlices = 1;
+%     mixed = uint16(reshape(tmp,[stackheight stackwidth numChannels numFrames]));
+%     mixed = permute(mixed,[3,1,2,4,5]);               % Order matrix [channel, y, x, frame, slice]
+%     mixed = reshape(mixed,numChannels,[]);                      % Flatten matrix
+%     numPts = size(mixed,2);
+%     numFluorophores = size(unmixingCoeffs_920,2);
+%     Unmixed = nan(numFluorophores,numPts);
+%     for i = 1:numPts
+%         Unmixed(:,i) = cast(lsqnonneg(unmixingCoeffs_920,double(mixed(:,i))),'int16');  % Use nonnegative least squares to solve system
+%     end
+%     Unmixed = reshape(Unmixed,[numFluorophores,stackheight,stackwidth,numFrames,numSlices]); % Expand matrix to 5D
+%     Unmixed = permute(Unmixed,[2,3,4,1,5]);               % volume matrix re-ordered to [y, x, frame, channel, slice]
+%     saveastiff(Unmixed(:,:,:,4),fullfile(save_dir,dstr,'vessels_unmixed.tif'),opts_tiff);
+%     %%
+%     %%%% spectral unmixing of functional gcamp, instead of just using ch2 %%%%
+%     numFrames = nspf+nstf;
+%     mixed = nan([iheight, iwidth, 4, numFrames]);
+%     for c = 1:4
+%         imageName = fullfile(save_dir,dstr,'MC functional',['CH' num2str(c) '_functional.tif']);
+%         mixed(:,:,c,:) = uint16(read_file(imageName));
+%     end
+%     mixed = permute(mixed,[3,1,2,4,5]);               % Order matrix [channel, y, x, frame, slice]
+%     mixed = reshape(mixed,numChannels,[]);                      % Flatten matrix
+%     numPts = size(mixed,2);
+%     numFluorophores = size(unmixingCoeffs_920,2);
+%     Unmixed = nan(numFluorophores,numPts);
+%     for i = 1:numPts
+%         Unmixed(:,i) = cast(lsqnonneg(unmixingCoeffs_920,double(mixed(:,i))),'int16');  % Use nonnegative least squares to solve system
+%     end
+%     Unmixed = reshape(Unmixed,[numFluorophores,iheight,iwidth,numFrames,numSlices]); % Expand matrix to 5D
+%     Unmixed = permute(Unmixed,[2,3,4,1,5]);               % volume matrix re-ordered to [y, x, frame, channel, slice]
+%     saveastiff(Unmixed(:,:,:,2),fullfile(save_dir,dstr,'gcamp_unmixed.tif'),opts_tiff);
+    
+    %store metadata
+    mdata(d).num_stims = ns;
+    mdata(d).num_stim_frames = nstf;
+    mdata(d).num_spont_frames = nspf;
+    mdata(d).num_color_frames = ncf;
     fprintf('done.\n\n');
 end
+
+%% save metadata
 save(fullfile(save_dir,'exp_metadata.mat'),'mdata','vstruct');
 fprintf('Pre-processing complete.\n\n');
 
