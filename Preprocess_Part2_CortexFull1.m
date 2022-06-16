@@ -10,7 +10,7 @@
 
 %% settings
 analysis_folder = 'C:\Users\misaa\Desktop\2022-06-15 06-12 22_5_8_9_ly6g_test';
-
+image_size = [500 1000]; %[width, height] of output image (in pixels)
 
 %% load files 
 %load files for time 1
@@ -43,7 +43,7 @@ colors_2 = colors(o,:);
         
 %create tif stack of before/after:
 %% 1. unmixed color image
-figure('Position',[100 100 1500 750]);
+figure('Position',[100 100 fliplr(image_size)]);
 
 color_im_1 = read_file(fullfile(analysis_folder,'1','celltypes_unmixed.tif'));
 yellow_1 = color_im_1(:,:,2);
@@ -58,36 +58,36 @@ red_2 = uint8(500*(double(red_2)/double(max(red_2,[],'all'))));
 color_im = [0.5*red_1+0.5*yellow_1 0.5*red_2+0.5*yellow_2];
 color_im(:,:,3) = uint8(zeros(size(color_im)));
 color_im(:,:,2) = 0.5*[yellow_1 yellow_2];
-imshow(imresize(color_im,[750 1500]));
+imshow(imresize(color_im,image_size));
 axis off
 box off
 a = gca;
 a.Position = [0 0 1 1];
 F = getframe(gcf);
 [X, ~] = frame2im(F);
-Xall = imresize(X,[1000 2000]);
+Xall = imresize(X,image_size);
 close(gcf)
 
 
 %% 2. mean functional image
-figure('Position',[100 100 1500 750]);
+figure('Position',[100 100 fliplr(image_size)]);
 mean_functional_1 = read_file(fullfile(analysis_folder,'1','MC functional','TEMPLATE_functional.tif'));
 mean_functional_2 = read_file(fullfile(analysis_folder,'2','MC functional','TEMPLATE_functional.tif'));
 [h, w] = size(mean_functional_1);
 mean_functional = uint16(2*[mean_functional_1 mean_functional_2]);
-imshow(imresize(mean_functional,[750 1500]));
+imshow(imresize(mean_functional,image_size));
 axis off
 box off
 a = gca;
 a.Position = [0 0 1 1];
 F = getframe(gcf);
 [X, ~] = frame2im(F);
-Xall(:,:,:,2) = imresize(X,[1000 2000]);
+Xall(:,:,:,2) = imresize(X,image_size);
 close(gcf)
 
 
 %% 3. ROIs
-figure('Position',[100 100 1500 750]);
+figure('Position',[100 100 fliplr(image_size)]);
 
 roiImg = zeros(h,w,3,2);
 for t = 1:2
@@ -116,23 +116,23 @@ for t = 1:2
     end
 end
 roiImg = uint8(255*[roiImg(:,:,:,1) roiImg(:,:,:,2)]);
-image(imresize(roiImg,[750 1500]));
+image(imresize(roiImg,image_size));
 axis off
 box off
 a = gca;
 a.Position = [0 0 1 1];
 F = getframe(gcf);
 [X, ~] = frame2im(F);
-Xall(:,:,:,3) = imresize(X,[1000 2000]);
+Xall(:,:,:,3) = imresize(X,image_size);
 close(gcf)
 
 
 %% 4. ROI #s
-figure('Position',[100 100 1500 750]);
+figure('Position',[100 100 fliplr(image_size)]);
 
 roiImg = uint8(zeros(h,2*w,3));
-scalefactor = 750/256;
-image(imresize(roiImg,[750 1500]));
+scalefactor = image_size(1)/256;
+image(imresize(roiImg,image_size));
 for t = 1:2
     if t==1
         stat = stat_1;
@@ -151,7 +151,7 @@ for t = 1:2
         roi = cells50(r);
         x = xadd + scalefactor*stat{roi}.med(2);
         y = scalefactor*stat{roi}.med(1);
-        text(x,y,num2str(roi),'Color',colors(r,:));
+        text(double(x),double(y),num2str(roi),'Color',colors(r,:));
     end
 end
 axis off
@@ -160,7 +160,7 @@ a = gca;
 a.Position = [0 0 1 1];
 F = getframe(gcf);
 [X, ~] = frame2im(F);
-Xall(:,:,:,4) = imresize(X,[1000 2000]);
+Xall(:,:,:,4) = imresize(X,image_size);
 close(gcf)
 
 
