@@ -7,7 +7,7 @@
 %same data as the matrix, but in a scatterplot
 
 %% settings
-analysis_folder = 'C:\Users\misaa\Desktop\2022-07-03 09-18 22_5_8_9_ly6g_test';
+analysis_folder = 'C:\Users\misaa\Desktop\test 06-29-22';
 fps = 3.4;
 
 %enter roi info for all rois here: [roi#before, roi#after, celltype]
@@ -30,7 +30,7 @@ roi_info = [16 nan 0;...
 
 %%load files 
 %load files for time 1
-unmixed_1 = read_file(fullfile(analysis_folder,'1','celltypes_unmixed.tif'));
+% unmixed_1 = read_file(fullfile(analysis_folder,'1','celltypes_unmixed.tif'));
 load(fullfile(analysis_folder,'1','suite2p','suite2p','plane0','Fall.mat'));
 F_1 = F;
 spks_1 = spks;
@@ -44,7 +44,7 @@ o = randperm(num_rois);
 colors_1 = colors(o,:);
         
 %load files for time 2
-unmixed_2 = read_file(fullfile(analysis_folder,'2','celltypes_unmixed.tif'));
+% unmixed_2 = read_file(fullfile(analysis_folder,'2','celltypes_unmixed.tif'));
 load(fullfile(analysis_folder,'2','suite2p','suite2p','plane0','Fall.mat'));
 F_2 = F;
 spks_2 = spks;
@@ -150,17 +150,27 @@ for t = 1:2
             oppI = 1+mod((maxI+3)-1,6);
             oppSpk = tmpSpksO(oppI);
             roi_OSI(r,t) = (maxSpk-oppSpk)/(maxSpk+oppSpk);
+            if t==1 && r==3 %t=1,r=3; t=2, r=29,37,47 (best: t=1,r=3)
+                best_OSI = meanSumStimSpks(1:12);
+                best_OSI_val = roi_OSI(r,t)
+            end
             
             %DSI (spks)
             [maxSpk,maxI] = max(meanSumStimSpks(1:12)); %condition which cause the most spikes
             oppI = 1+mod((maxI+6)-1,12); %condition on the opposite angle
             oppSpk = meanSumStimSpks(oppI);
             roi_DSI(r,t) = (maxSpk-oppSpk)/(maxSpk+oppSpk);
+            if t==2 && r==47 %t=1 r=1,2,11,13; t=2 r=9,16,17,20,22,24,28,29 (best t=2,r=47)
+                best_DSI = meanSumStimSpks(1:12);
+                best_DSI_val = roi_DSI(r,t)
+            end
         end
     end
 end
 %%plot before/after silent/normal/hyperactive
 bins = zeros(2,3); %[time, bin]
+% bins(1,1) = 46; %# missing in time 1
+% bins(2,1) = 7; %# missing in time 2
 for t = 1:2
     spm = roi_kontransientspermin(:,t);
     spm(isnan(spm)) = [];
@@ -169,6 +179,7 @@ for t = 1:2
     bins(t,3) = bins(t,3) + sum(spm>4);
 end
 
+bins
 %%
 colors = linspecer(2);
 plot_size = [1000 250];
@@ -211,29 +222,29 @@ title('activity classification')
 
 
 %% create polar plots for OSI, DSI
-% figure_size = [300 250];
-% figure('Position',[100 100 figure_size]);
-% theta = deg2rad(0:30:360);
-% rho = [best_OSI best_OSI(1)];
-% rho = rho/max(rho);
-% polarplot(theta,rho,'LineWidth',1)
-% ax = gca;
-% ax.RTick = [0.5 1];
-% ax.RLim = [0 1.25];
-% ax.ThetaDir = 'clockwise';
-% title('orientation selectivity')
-% 
-% figure_size = [300 250];
-% figure('Position',[500 100 figure_size]);
-% theta = deg2rad(0:30:360);
-% rho = [best_DSI best_DSI(1)];
-% rho = rho/max(rho);
-% polarplot(theta,rho,'LineWidth',1)
-% ax = gca;
-% ax.RTick = [0.5 1];
-% ax.RLim = [0 1.25];
-% ax.ThetaDir = 'clockwise';
-% title('direction selectivity')
+figure_size = [300 250];
+figure('Position',[100 100 figure_size]);
+theta = deg2rad(0:30:360);
+rho = [best_OSI best_OSI(1)];
+rho = rho/max(rho);
+polarplot(theta,rho,'LineWidth',1)
+ax = gca;
+ax.RTick = [0.5 1];
+ax.RLim = [0 1.25];
+ax.ThetaDir = 'clockwise';
+title('orientation selectivity')
+
+figure_size = [300 250];
+figure('Position',[500 100 figure_size]);
+theta = deg2rad(0:30:360);
+rho = [best_DSI best_DSI(1)];
+rho = rho/max(rho);
+polarplot(theta,rho,'LineWidth',1)
+ax = gca;
+ax.RTick = [0.5 1];
+ax.RLim = [0 1.25];
+ax.ThetaDir = 'clockwise';
+title('direction selectivity')
 
 
 %% plot before/after cumulative distribution plots
@@ -247,60 +258,60 @@ b = bar(x,y,0.5);
 b.FaceColor = 'flat';
 b.CData = colors;
 xlim([0.5 2.5])
-ylim([0 150]);
+ylim([0 58]);
 xticklabels({'baseline','treated'})
 ylabel('# active ROIs');
 ax = gca;
 ax.Position = [0.13 0.11 0.12 0.815];
-title('active cells')
+title('spontaneously active cells')
 %spontaneous activity (transients per min)
-subplot(1,4,2);
-max_tpm = max(roi_transientspermin,[],'all');
-x = 0:0.1:max_tpm;
-for d = 1:2
-    y = zeros(size(x));
-    roi_inds = find(~isnan(roi_info(:,d)));
-    yvals = floor(10*sort(roi_transientspermin(roi_inds,d)));
-    for i = yvals
-        y(i+1) = y(i+1)+1;
-    end
-    y = y/10;
-    y = cumsum(y);
-    y = y/max(y);
-    plot(x,y,'-k','LineWidth',1.5,'Color',colors(d,:));
-    hold on
-end
-% legend({'baseline','treated'},'Location','NorthEastOutside')
-xlabel('transients/min')
-ylabel('cumulative probability')
-xlim([30 50])
-ylim([0 1])
-yticks([0 0.2 0.4 0.6 0.8 1])
-title('spontaneous activity')
-
-%spontaneous activity (spikes per min)
 % subplot(1,4,2);
-% max_tpm = max(roi_spikespermin,[],'all');
-% x = 0:max_tpm;
+% max_tpm = max(roi_transientspermin,[],'all');
+% x = 0:0.1:max_tpm;
 % for d = 1:2
 %     y = zeros(size(x));
 %     roi_inds = find(~isnan(roi_info(:,d)));
-%     yvals = floor(sort(roi_spikespermin(roi_inds,d)/1000));
+%     yvals = floor(10*sort(roi_transientspermin(roi_inds,d)));
 %     for i = yvals
 %         y(i+1) = y(i+1)+1;
 %     end
+%     y = y/10;
 %     y = cumsum(y);
 %     y = y/max(y);
 %     plot(x,y,'-k','LineWidth',1.5,'Color',colors(d,:));
 %     hold on
 % end
 % % legend({'baseline','treated'},'Location','NorthEastOutside')
-% xlabel('spikes/min')
+% xlabel('transients/min')
 % ylabel('cumulative probability')
-% xlim([0 200])
+% xlim([30 50])
 % ylim([0 1])
 % yticks([0 0.2 0.4 0.6 0.8 1])
 % title('spontaneous activity')
+
+%spontaneous activity (spikes per min)
+subplot(1,4,2);
+max_tpm = max(roi_spikespermin,[],'all');
+x = 0:max_tpm;
+for d = 1:2
+    y = zeros(size(x));
+    roi_inds = find(~isnan(roi_info(:,d)));
+    yvals = floor(sort(roi_spikespermin(roi_inds,d)/1000));
+    for i = yvals
+        y(i+1) = y(i+1)+1;
+    end
+    y = cumsum(y);
+    y = y/max(y);
+    plot(x,y,'-k','LineWidth',1.5,'Color',colors(d,:));
+    hold on
+end
+% legend({'baseline','treated'},'Location','NorthEastOutside')
+xlabel('spikes/min')
+ylabel('cumulative probability')
+xlim([0 200])
+ylim([0 1])
+yticks([0 0.2 0.4 0.6 0.8 1])
+title('spontaneous activity')
 
 %orientation selectivity
 % figure('Position',[100 100 plot_size]);
@@ -353,4 +364,75 @@ ylim([0 1])
 xticks([0 0.2 0.4 0.6 0.8 1])
 yticks([0 0.2 0.4 0.6 0.8 1])
 title('direction selectivity')
+
+
+%% plot other data
+plot_size = [400 250];
+colors = linspecer(2);
+
+%plot before/after spontaneous and stimulated activity scatterplot
+figure('Position',[100 100 plot_size]);
+title('neural excitability')
+for d = 1:4
+    scatter(1:num_rois',roi_transientspermin(:,d),20,'filled')
+    hold on
+end
+legend({'before-spont','after-spont','before-stim','after-stim'},'Location','NorthEastOutside')
+xlabel('roi')
+ylabel('transients/min')
+
+%plot before/after spontaneous activity sorted lineplot
+figure('Position',[100 100 plot_size]);
+title('neural excitability')
+for d = 1:2
+    roi_inds = find(~isnan(roi_info(:,d)));
+    nr = length(roi_inds);
+    x = (0:(nr-1))/(nr-1);
+    y = sort(roi_transientspermin(roi_inds,d));
+    plot(x,y,'-k','LineWidth',1.5,'Color',colors(d,:));
+    hold on
+end
+legend({'baseline','treated'},'Location','NorthEastOutside')
+xlabel('roi (sorted)')
+ylabel('transients/min')
+xlim([0 1])
+xticks([0 0.2 0.4 0.6 0.8 1])
+
+%plot before/after OSI sorted lineplot
+figure('Position',[100 100 plot_size]);
+title('orientation selectivity')
+for d = 1:2
+    roi_inds = find(~isnan(roi_info(:,d)));
+    nr = length(roi_inds);
+    x = (0:(nr-1))/(nr-1);
+    y = sort(roi_OSI(roi_inds,d));
+    plot(x,y,'-k','LineWidth',1.5,'Color',colors(d,:));
+    hold on
+end
+legend({'baseline','treated'},'Location','NorthEastOutside')
+xlabel('roi (sorted)')
+ylabel('OSI')
+xlim([0 1])
+ylim([0 1])
+xticks([0 0.2 0.4 0.6 0.8 1])
+yticks([0 0.2 0.4 0.6 0.8 1])
+
+%plot before/after DSI sorted lineplot
+figure('Position',[100 100 plot_size]);
+title('direction selectivity')
+for d = 1:2
+    roi_inds = find(~isnan(roi_info(:,d)));
+    nr = length(roi_inds);
+    x = (0:(nr-1))/(nr-1);
+    y = sort(roi_DSI(roi_inds,d));
+    plot(x,y,'-k','LineWidth',1.5,'Color',colors(d,:));
+    hold on
+end
+legend({'baseline','treated'},'Location','NorthEastOutside')
+xlabel('roi (sorted)')
+ylabel('DSI')
+xlim([0 1])
+ylim([0 1])
+xticks([0 0.2 0.4 0.6 0.8 1])
+yticks([0 0.2 0.4 0.6 0.8 1])
 

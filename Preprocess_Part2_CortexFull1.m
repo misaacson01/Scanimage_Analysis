@@ -9,8 +9,8 @@
 %imagej with a matlab gui that makes it easier to save cell linking info
 
 %% settings
-analysis_folder = 'C:\Users\misaa\Desktop\2022-06-15 06-12 22_5_8_9_ly6g_test';
-image_size = [500 1000]; %[width, height] of output image (in pixels)
+analysis_folder = 'C:\Users\misaa\Desktop\2022-07-03 09-18 22_5_8_9_ly6g_test';
+image_size = [500 1000]; %[height, width] of output image (in pixels)
 
 %% load files 
 %load files for time 1
@@ -165,16 +165,20 @@ close(gcf)
 
 
 %% save the stack
-savename = fullfile(analysis_folder,'CellLinking.tif');
+savename = fullfile(analysis_folder,'CellLinkingSideBySide.tif');
 options.color = true;
 options.compress = 'no';
 options.message = false;
 options.append = false;
 options.overwrite = true;
 options.big = false;
-
 saveastiff(Xall,savename,options)
 
+savename = fullfile(analysis_folder,'CellLinkingOverlayed.tif');
+w = floor(image_size(2)/2);
+XallS = Xall(:,1:w,:,:);
+XallS(:,:,:,5:8) = Xall(:,w+1:2*w,:,:);
+saveastiff(XallS,savename,options)
 
 %% run the cell linker gui with the stack name
 %TODO

@@ -2,9 +2,9 @@
 
 %% settings
 analysis_name = '22_5_8_9_ly6g_test';
-exp_dirs{1} = 'C:\Users\misaa\Desktop\2022-05-08 fulltest_beforeLy6g_22_5_8'; %e.g. baseline
-exp_dirs{2} = 'C:\Users\misaa\Desktop\2022-05-09 fulltest_afterLy6g_22_5_9'; %e.g. post-injection
-
+exp_dirs{1} = 'C:\Users\misaa\Desktop\2022-06-30 full20x_APP_before_ly6g_mouse L'; %e.g. baseline
+exp_dirs{2} = 'C:\Users\misaa\Desktop\2022-07-01 full20x_APP_after_ly6g_mouse_L'; %e.g. post-injection
+register_all_to_first = true;
 
 %% pre-process imaging
 %change settings if desired
@@ -87,22 +87,53 @@ for d = 1:num_dirs
     %motion correct it 
     fprintf('Starting motion correction:\n');
     run_multichannel_normcorre('imageName',imageName,'channelOptions',channel_options);
-    
-    %save it in a "suite2p" folder (ch2 only?)
-    imageName = fullfile(save_dir,dstr,'MC functional','CH2_functional.tif');
-    copyfile(imageName,fullfile(save_dir,dstr,'suite2p','CH2_functional.tif'))
-    
+    dstr_first = num2str(d);
+    template_first = read_file(fullfile(save_dir,dstr_first,'MC functional','TEMPLATE_functional.tif'));
+    %%
+    if d>1 && register_all_to_first
+        %register functional imaging to first session
+        template = read_file(fullfile(save_dir,dstr,'MC functional','TEMPLATE_functional.tif'));
+        tform = imregtform(template,template_first,'affine',optimizer,metric);
+        ch2_functional = read_file(fullfile(save_dir,dstr,'MC functional','CH2_functional.tif'));
+        sameAsInput = affineOutputView([iheight iwidth],tform,'BoundsStyle','SameAsInput');
+        for f = 1:size(ch2_functional,3)
+            imwarp(ch2_functional(:,:,f),tform,'OutputView',sameAsInput);
+        end
+        saveastiff(ch2_functional,fullfile(save_dir,dstr,'suite2p','CH2_functional.tif'));
+    else
+        %copy the functional imaging to a "suite2p" folder (ch2 only for now)
+        imageName = fullfile(save_dir,dstr,'MC functional','CH2_functional.tif');
+        copyfile(imageName,fullfile(save_dir,dstr,'suite2p','CH2_functional.tif'));
+    end
+    %%
     %spectral unmixing for excitatory/inhibitory neurons
     %load images for color unmixing (create 8ch mixed)
     fprintf('Starting fluorophore unmixing...');
     sats = read_file(fullfile(exp_dirs{d},'1030_00001.tif'));
-    ncf = size(sats,3)/4;
+    ncf = size(sats,3)/4; %number of color frames
     sats = mean(reshape(sats,[iheight iwidth 4 ncf]),4);
     cham = mean(reshape(functional(:,:,1:(4*ncf)),[iheight iwidth 4 ncf]),4);
-    tform = imregtform(max(sats(:,:,channel_options.chsh),[],3),max(cham(:,:,channel_options.chsh),[],3),'affine',optimizer,metric);
-    sameAsInput = affineOutputView([iheight iwidth],tform,'BoundsStyle','SameAsInput');
-    for c = 1:4
-        sats(:,:,c) = imwarp(sats(:,:,c),tform,'OutputView',sameAsInput);
+    if register_all_to_first
+        assert(size(sats,1)==size(template_first,1),'functional imaging and color imaging are not the same size');
+        %register satsuma images to first functional template
+        tform = imregtform(max(sats(:,:,channel_options.chsh),[],3),template_first,'affine',optimizer,metric);
+        sameAsInput = affineOutputView([iheight iwidth],tform,'BoundsStyle','SameAsInput');
+        for c = 1:size(sats,3)
+            imwarp(sats(:,:,c),tform,'OutputView',sameAsInput);
+        end
+        %register chameleon images to first functional template
+        tform = imregtform(max(cham(:,:,channel_options.chsh),[],3),template_first,'affine',optimizer,metric);
+        sameAsInput = affineOutputView([iheight iwidth],tform,'BoundsStyle','SameAsInput');
+        for c = 1:size(cham,3)
+            imwarp(cham(:,:,c),tform,'OutputView',sameAsInput);
+        end
+    else
+        %register satsuma images to chameleon images
+        tform = imregtform(max(sats(:,:,channel_options.chsh),[],3),max(cham(:,:,channel_options.chsh),[],3),'affine',optimizer,metric);
+        sameAsInput = affineOutputView([iheight iwidth],tform,'BoundsStyle','SameAsInput');
+        for c = 1:size(sats,3)
+            sats(:,:,c) = imwarp(sats(:,:,c),tform,'OutputView',sameAsInput);
+        end
     end
     mixed = cham;
     mixed(:,:,5:8) = sats;
@@ -213,6 +244,7 @@ for d = 1:num_dirs
     mdata(d).num_spont_frames = nspf;
     mdata(d).num_color_frames = ncf;
     fprintf('done.\n\n');
+    %%
 end
 
 %% save metadata
