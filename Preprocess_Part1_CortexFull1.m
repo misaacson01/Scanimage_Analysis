@@ -44,6 +44,14 @@ tc = [0     0     0     1     0     0     0     0    ]; %texas red (maybe some i
 nc = [0.125 0.125 0.125 0.125 0.125 0.125 0.125 0.125]; %pmt noise
 unmixingCoeffs = [gc', yc', rc', tc', nc'];
 
+%new dilution coefficients
+gc = [0     0.33  0.24  0.06  0     0.15  0.17  0.05 ]; %gcamp6s (
+yc = [0     0     0     0     0     0.15   0.75   0.1 ]; %eyfp
+rc = [0     0     0     0     0     0     0.28  0.72 ]; %mruby2
+tc = [0     0     0     1     0     0     0     0    ]; %texas red (maybe some in sats ch4?)
+nc = [0.125 0.125 0.125 0.125 0.125 0.125 0.125 0.125]; %pmt noise
+unmixingCoeffs = [gc', yc', rc', tc', nc'];
+
 %set 780 nm unmixing coefficients
 %%%%%%%%%%%fix these
 % bc = [1    0     0     0    ];

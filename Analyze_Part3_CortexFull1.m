@@ -18,7 +18,7 @@ roi_info = [16 nan 0;...
     18 54 0;...
     9 nan 0;...
     21 nan 0;...
-    11 nan 0;...
+    11h nan 0;...
     6 nan 0;...
     1 3 0;...
     2 10 0;...
@@ -51,7 +51,7 @@ spks_2 = spks;
 Fneu_2 = Fneu;
 stat_2 = stat;
 iscell_2 = iscell;
-cells50 = find(iscell_2(:,2));
+cells50 = find(iscell_2(:,1));
 num_rois = length(cells50);
 colors = linspecer(num_rois);
 o = randperm(num_rois);
@@ -96,6 +96,7 @@ numConditions = vstruct(1).num_trials;
 numFramesPerTrial = mdata(t).num_stim_frames;
 stimStart = 1+mdata(1).num_spont_frames;
 spontMinutes = mdata(1).num_spont_frames/(fps*60);
+stimMinutes = (mdata(t).num_stim_frames*mdata(t).num_stims)/(fps*60);
 roi_stimspks = nan([numRepetitions, numConditions, mdata(1).num_stim_frames]);
 roi_stimtransients = nan([numRepetitions, numConditions, mdata(1).num_stim_frames]);
 roi_DSI = nan(num_rois,2);
@@ -122,11 +123,11 @@ for t = 1:2
         if ~isnan(roi)
             %spikes/min
             roi_spikespermin(r,t) = sum(spks(roi,1:mdata(t).num_spont_frames))/spontMinutes; %spontaneous 
-            roi_spikespermin(r,2+t) = sum(spks(roi,1+mdata(t).num_spont_frames:end))/spontMinutes; %stim-evoked
+            roi_spikespermin(r,2+t) = sum(spks(roi,1+mdata(t).num_spont_frames:end))/stimMinutes; %stim-evoked
             
             %transients/min
             roi_transientspermin(r,t) = sum(spks(roi,1:mdata(t).num_spont_frames)>0)/spontMinutes; %spontaneous 
-            roi_transientspermin(r,2+t) = sum(spks(roi,1+mdata(t).num_spont_frames:end)>0)/spontMinutes; %stim-evoked 
+            roi_transientspermin(r,2+t) = sum(spks(roi,1+mdata(t).num_spont_frames:end)>0)/stimMinutes; %stim-evoked 
             
             %kontransients/min
             tmp = F(roi,1:mdata(t).num_spont_frames);
@@ -208,32 +209,6 @@ ylabel('# ROIs');
 % ax = gca;
 % ax.Position = [0.13 0.11 0.12 0.815];
 title('activity classification')
-
-
-%% create polar plots for OSI, DSI
-% figure_size = [300 250];
-% figure('Position',[100 100 figure_size]);
-% theta = deg2rad(0:30:360);
-% rho = [best_OSI best_OSI(1)];
-% rho = rho/max(rho);
-% polarplot(theta,rho,'LineWidth',1)
-% ax = gca;
-% ax.RTick = [0.5 1];
-% ax.RLim = [0 1.25];
-% ax.ThetaDir = 'clockwise';
-% title('orientation selectivity')
-% 
-% figure_size = [300 250];
-% figure('Position',[500 100 figure_size]);
-% theta = deg2rad(0:30:360);
-% rho = [best_DSI best_DSI(1)];
-% rho = rho/max(rho);
-% polarplot(theta,rho,'LineWidth',1)
-% ax = gca;
-% ax.RTick = [0.5 1];
-% ax.RLim = [0 1.25];
-% ax.ThetaDir = 'clockwise';
-% title('direction selectivity')
 
 
 %% plot before/after cumulative distribution plots

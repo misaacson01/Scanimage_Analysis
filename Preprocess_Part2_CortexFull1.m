@@ -42,34 +42,7 @@ o = randperm(num_rois);
 colors_2 = colors(o,:);
         
 %create tif stack of before/after:
-%% 1. unmixed color image
-figure('Position',[100 100 fliplr(image_size)]);
-
-color_im_1 = read_file(fullfile(analysis_folder,'1','celltypes_unmixed.tif'));
-yellow_1 = color_im_1(:,:,2);
-yellow_1 = uint8(500*(double(yellow_1)/double(max(yellow_1,[],'all'))));
-red_1 = color_im_1(:,:,3);
-red_1 = uint8(500*(double(red_1)/double(max(red_1,[],'all'))));
-color_im_2 = read_file(fullfile(analysis_folder,'2','celltypes_unmixed.tif'));
-yellow_2 = color_im_2(:,:,2);
-yellow_2 = uint8(500*(double(yellow_2)/double(max(yellow_2,[],'all'))));
-red_2 = color_im_2(:,:,3);
-red_2 = uint8(500*(double(red_2)/double(max(red_2,[],'all'))));
-color_im = [0.5*red_1+0.5*yellow_1 0.5*red_2+0.5*yellow_2];
-color_im(:,:,3) = uint8(zeros(size(color_im)));
-color_im(:,:,2) = 0.5*[yellow_1 yellow_2];
-imshow(imresize(color_im,image_size));
-axis off
-box off
-a = gca;
-a.Position = [0 0 1 1];
-F = getframe(gcf);
-[X, ~] = frame2im(F);
-Xall = imresize(X,image_size);
-close(gcf)
-
-
-%% 2. mean functional image
+%% 1. mean functional image
 figure('Position',[100 100 fliplr(image_size)]);
 mean_functional_1 = read_file(fullfile(analysis_folder,'1','MC functional','TEMPLATE_functional.tif'));
 mean_functional_2 = read_file(fullfile(analysis_folder,'2','MC functional','TEMPLATE_functional.tif'));
@@ -82,11 +55,56 @@ a = gca;
 a.Position = [0 0 1 1];
 F = getframe(gcf);
 [X, ~] = frame2im(F);
+Xall = imresize(X,image_size);
+close(gcf)
+
+
+%% 2. unmixed yellow
+color_im_1 = read_file(fullfile(analysis_folder,'1','celltypes_unmixed.tif'));
+color_im_2 = read_file(fullfile(analysis_folder,'2','celltypes_unmixed.tif'));
+
+figure('Position',[100 100 fliplr(image_size)]);
+yellow_1 = color_im_1(:,:,2);
+yellow_1 = 400*(double(yellow_1)/double(max(yellow_1,[],'all')));
+yellow_2 = color_im_2(:,:,2);
+yellow_2 = 400*(double(yellow_2)/double(max(yellow_2,[],'all')));
+color_im = uint8(0.5*[yellow_1 yellow_2]);
+color_im(:,:,2) = color_im;
+color_im(:,:,3) = uint8(0);
+imshow(imresize(color_im,image_size));
+axis off
+box off
+a = gca;
+a.Position = [0 0 1 1];
+F = getframe(gcf);
+[X, ~] = frame2im(F);
 Xall(:,:,:,2) = imresize(X,image_size);
 close(gcf)
 
 
-%% 3. ROIs
+%% 3. unmixed red
+color_im_1 = read_file(fullfile(analysis_folder,'1','celltypes_unmixed.tif'));
+color_im_2 = read_file(fullfile(analysis_folder,'2','celltypes_unmixed.tif'));
+
+figure('Position',[100 100 fliplr(image_size)]);
+red_1 = color_im_1(:,:,3);
+red_1 = 400*(double(red_1)/double(max(red_1,[],'all')));
+red_2 = color_im_2(:,:,3);
+red_2 = 400*(double(red_2)/double(max(red_2,[],'all')));
+color_im = uint8([red_1 red_2]);
+color_im(:,:,[2 3]) = uint8(0);
+imshow(imresize(color_im,image_size));
+axis off
+box off
+a = gca;
+a.Position = [0 0 1 1];
+F = getframe(gcf);
+[X, ~] = frame2im(F);
+Xall(:,:,:,3) = imresize(X,image_size);
+close(gcf)
+
+
+%% 4. ROIs
 figure('Position',[100 100 fliplr(image_size)]);
 
 roiImg = zeros(h,w,3,2);
@@ -123,11 +141,11 @@ a = gca;
 a.Position = [0 0 1 1];
 F = getframe(gcf);
 [X, ~] = frame2im(F);
-Xall(:,:,:,3) = imresize(X,image_size);
+Xall(:,:,:,4) = imresize(X,image_size);
 close(gcf)
 
 
-%% 4. ROI #s
+%% 5. ROI #s
 figure('Position',[100 100 fliplr(image_size)]);
 
 roiImg = uint8(zeros(h,2*w,3));
@@ -160,7 +178,7 @@ a = gca;
 a.Position = [0 0 1 1];
 F = getframe(gcf);
 [X, ~] = frame2im(F);
-Xall(:,:,:,4) = imresize(X,image_size);
+Xall(:,:,:,5) = imresize(X,image_size);
 close(gcf)
 
 
@@ -179,6 +197,7 @@ w = floor(image_size(2)/2);
 XallS = Xall(:,1:w,:,:);
 XallS(:,:,:,5:8) = Xall(:,w+1:2*w,:,:);
 saveastiff(XallS,savename,options)
+
 
 %% run the cell linker gui with the stack name
 %TODO
