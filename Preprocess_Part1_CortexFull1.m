@@ -182,6 +182,11 @@ for d = 1:num_dirs
     Unmixed = permute(Unmixed,[2,3,1,4,5]);               % volume matrix re-ordered to [y, x, channel, frame, slice]
     saveastiff(Unmixed,fullfile(save_dir,dstr,'celltypes_unmixed.tif'),opts_tiff);
     
+    %save green, red, and yellow .tifs separately (added for ROImaker pipeline)
+    saveastiff(Unmixed(:,:,1),fullfile(save_dir,dstr,'gcamp_unmixed.tif'),opts_tiff);
+    saveastiff(Unmixed(:,:,2),fullfile(save_dir,dstr,'eyfp_unmixed.tif'),opts_tiff);
+    saveastiff(Unmixed(:,:,3),fullfile(save_dir,dstr,'mruby_unmixed.tif'),opts_tiff);
+    
     %save png of eyfp/mruby yellow/red image 
     colorIm = zeros([iheight iwidth 3]);
     colorIm(:,:,1) = mean(Unmixed(:,:,[2 3]),3);
