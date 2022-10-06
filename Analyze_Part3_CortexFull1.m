@@ -18,7 +18,7 @@ roi_info = [16 nan 0;...
     18 54 0;...
     9 nan 0;...
     21 nan 0;...
-    11h nan 0;...
+    11 nan 0;...
     6 nan 0;...
     1 3 0;...
     2 10 0;...
@@ -91,24 +91,32 @@ roi_transientspermin = nan(num_rois,4);
 roi_kontransientspermin = nan(num_rois,2);
 numRepetitions = vstruct(1).num_reps;
 repetitionsToAverage = 2:numRepetitions;
-stimOnFrames = 7:13;
+stimOnFrames = 7:12;
+baselineFrames = 1:6;
 numConditions = vstruct(1).num_trials;
-numFramesPerTrial = mdata(t).num_stim_frames;
+numFramesPerTrial = mdata(1).num_stim_frames;
 stimStart = 1+mdata(1).num_spont_frames;
 spontMinutes = mdata(1).num_spont_frames/(fps*60);
-stimMinutes = (mdata(t).num_stim_frames*mdata(t).num_stims)/(fps*60);
+stimMinutes = (mdata(1).num_stim_frames*mdata(1).num_stims)/(fps*60);
 roi_stimspks = nan([numRepetitions, numConditions, mdata(1).num_stim_frames]);
 roi_stimtransients = nan([numRepetitions, numConditions, mdata(1).num_stim_frames]);
 roi_DSI = nan(num_rois,2);
 roi_OSI = nan(num_rois,2);
 for t = 1:2
     %get frame indices for each trial, organized by [repetition, conditions, frame]
-    stimFrames = vstruct(t).order-1; %each row is 0:numConditions-1
-    stimFrames = stimFrames + repmat(numConditions*(0:numRepetitions-1)',[1 numConditions]); %value for trial1 rep2 is now numConds+1, eg
-    stimFrames = stimFrames*numFramesPerTrial; %values are now frame numbers, relative to the first trial of each repetition
-    stimFrames = stimFrames + stimStart; %values are the actual frame numbers when each trial started
-    stimFrames = repmat(stimFrames, [1 1 numFramesPerTrial]);
+    trial_order = repmat(0:(numConditions-1),[numRepetitions 1]);
+    trial_order = trial_order + repmat(numConditions*(0:numRepetitions-1)',[1 numConditions]); %value for trial1 rep2 is now numConds+1, eg
+    start_of_trial_frame = trial_order*numFramesPerTrial; %values are now frame numbers, relative to the first trial of each repetition
+
+    %sort by increasing condition
+    [~, sorted_col_order] = sort(vstruct(t).order,2);
+    sorted_row_order = repmat((1:numRepetitions)',[1 numConditions]);
+    sorted_trial_start_frame = start_of_trial_frame(sub2ind([numRepetitions numConditions],sorted_row_order,sorted_col_order));
+    sorted_trial_start_frame = sorted_trial_start_frame + stimStart; %values are the actual frame numbers when each trial started
+
+    stimFrames = repmat(sorted_trial_start_frame, [1 1 numFramesPerTrial]); %3rd dimension will store all frames for each trial
     stimFrames = stimFrames + repmat(permute((0:numFramesPerTrial-1),[1 3 2]),[numRepetitions, numConditions, 1]);
+
 
     if t==1
         spks = spks_1;
@@ -159,6 +167,9 @@ for t = 1:2
             roi_DSI(r,t) = (maxSpk-oppSpk)/(maxSpk+oppSpk);
         end
     end
+    
+   %polar plot code goes here, after the DSI has been calculated for all rois
+   
 end
 %%plot before/after silent/normal/hyperactive
 bins = zeros(2,3); %[time, bin]
