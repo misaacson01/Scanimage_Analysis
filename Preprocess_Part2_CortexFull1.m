@@ -193,9 +193,10 @@ options.big = false;
 saveastiff(Xall,savename,options)
 
 savename = fullfile(analysis_folder,'CellLinkingOverlayed.tif');
+numFrames = size(Xall,4);
 w = floor(image_size(2)/2);
 XallS = Xall(:,1:w,:,:);
-XallS(:,:,:,5:8) = Xall(:,w+1:2*w,:,:);
+XallS(:,:,:,(numFrames+1):(2*numFrames)) = Xall(:,w+1:2*w,:,:);
 saveastiff(XallS,savename,options)
 
 
