@@ -1,342 +1,215 @@
-
-%currently outputs some simple summary data, e.g.
-%number of yellow, red, total active neurons
-%number of neurons linked between before/after datasets
-%transients-per-minute of every roi in a big matrix: 
-%   [before-spontaneous, after-spontaneous, before-stim, after-stim]
-%same data as the matrix, but in a scatterplot
-
 %% settings
-analysis_folder = 'C:\Users\misaa\Desktop\2022-07-03 09-18 22_5_8_9_ly6g_test';
-fps = 3.4;
 
-%enter roi info for all rois here: [roi#before, roi#after, celltype]
-%(celltype = 0 for unknown, 1 for yellow, 2 for red)
-roi_info = [16 nan 0;...
-    10 28 1;...
-    19 16 0;...
-    18 54 0;...
-    9 nan 0;...
-    21 nan 0;...
-    11 nan 0;...
-    6 nan 0;...
-    1 3 0;...
-    2 10 0;...
-    4 nan 0;...
-    15 5 0;...
-    8 2 0;...
-    5 nan 0];
-    
+analysis_folder = "C:\Users\misaa\Desktop\2022-10-17 14-50 22_08_30_31 full20x_M_APP_ly6g_mouse_R_spot_2";
 
-%%load files 
-%load files for time 1
-unmixed_1 = read_file(fullfile(analysis_folder,'1','celltypes_unmixed.tif'));
-load(fullfile(analysis_folder,'1','suite2p','suite2p','plane0','Fall.mat'));
-F_1 = F;
-spks_1 = spks;
-Fneu_1 = Fneu;
-stat_1 = stat;
-iscell_1 = iscell;
-cells50 = find(iscell_1(:,1));
-num_rois = length(cells50);
-colors = linspecer(num_rois);
-o = randperm(num_rois);
-colors_1 = colors(o,:);
-        
-%load files for time 2
-unmixed_2 = read_file(fullfile(analysis_folder,'2','celltypes_unmixed.tif'));
-load(fullfile(analysis_folder,'2','suite2p','suite2p','plane0','Fall.mat'));
-F_2 = F;
-spks_2 = spks;
-Fneu_2 = Fneu;
-stat_2 = stat;
-iscell_2 = iscell;
-cells50 = find(iscell_2(:,1));
-num_rois = length(cells50);
-colors = linspecer(num_rois);
-o = randperm(num_rois);
-colors_2 = colors(o,:);
 
-load(fullfile(analysis_folder,'exp_metadata.mat'));
 
-%for using all cells from suite2p
-num_rois_1 = sum(iscell_1(:,1)==1);
-num_rois_2 = sum(iscell_2(:,1)==1);
-roi_info = nan(max([num_rois_1 num_rois_2]),3);
-roi_info(1:num_rois_1,1) = sort(find(iscell_1(:,1)));
-roi_info(1:num_rois_2,2) = sort(find(iscell_2(:,1)));
-roi_info(:,3) = 0;
+%% load files and metadata
+% load experiment metadata
+filename = fullfile(analysis_folder,'exp_metadata.mat');
+assert(isfile(filename),'exp_metadata.mat file note found in analysis folder')
+load(filename);
 
-%check for duplicates
-for t = 1:2
-    tmp = roi_info(:,t);
-    tmp(isnan(tmp)) = [];
-    assert(length(tmp)==length(unique(tmp)),['redundant roi(s) found in roi_info (column ' num2str(t) ')']);
+% load roi_info
+filename = fullfile(analysis_folder,'roi_info.mat');
+assert(isfile(filename),'roi_info.mat file note found in analysis folder')
+load(filename);
+if exist('roi_info','var')
+    single_roi_info = true;
+    num_timepoints = size(roi_info,3);
+    num_rois = nan(1,num_timepoints);
+    for t = 1:num_timepoints
+        num_rois(t) = sum(~isnan(roi_info(:,1,t)));
+    end
+elseif exist('roi_info_1','var')
+    single_roi_info = false;
+    t = 0;
+    endreached = 0;
+    while endreached==0
+        t = t+1;
+        roi_info_name = ['roi_info_' num2str(t)];
+        if exist(roi_info_name,'var')
+            num_timepoints = t;
+            num_rois(t) = size(eval(roi_info_name),1);
+        else
+            endreached = 1;
+        end
+    end        
+else
+    error('unexpected variables in roi_info.mat')
 end
 
+%load suite2p settings to get fps
+filename = fullfile(analysis_folder,num2str(1),'suite2p','suite2p','plane0','Fall.mat');
+assert(isfile(filename),['suite2p Fall.mat file note found in analysis folder for timepoint ' num2str(1)])
+load(filename);
+fps = ops.fs;
 
-%% analyze data
-%summary data of roi info
-num_active = sum(~isnan(roi_info(:,1:2)))
-num_active_yellow = sum(~isnan(roi_info(:,1:2)) & repmat(roi_info(:,3)==1,[1 2]))
-num_active_red = sum(~isnan(roi_info(:,1:2)) & repmat(roi_info(:,3)==2,[1 2]))
-num_linked = sum(sum(~isnan(roi_info(:,1:2)),2)==2)
-num_linked_yellow = sum(sum(~isnan(roi_info(:,1:2)),2)==2 & roi_info(:,3)==1)
-num_linked_red = sum(sum(~isnan(roi_info(:,1:2)),2)==2 & roi_info(:,3)==2)
-
-num_rois = size(roi_info,1);
-%pre-allocate variables
-roi_spikespermin = nan(num_rois,4);
-roi_transientspermin = nan(num_rois,4);
-roi_kontransientspermin = nan(num_rois,2);
+% experiment settings
 numRepetitions = vstruct(1).num_reps;
-repetitionsToAverage = 2:numRepetitions;
-stimOnFrames = 7:12;
+repetitionsToAverage = 2:numRepetitions; %skip first, it tends to have an outsized effect
+stimOnFrames = 8:17;
 baselineFrames = 1:6;
+spontFrames = 100:mdata(1).num_spont_frames;
 numConditions = vstruct(1).num_trials;
 numFramesPerTrial = mdata(1).num_stim_frames;
 stimStart = 1+mdata(1).num_spont_frames;
 spontMinutes = mdata(1).num_spont_frames/(fps*60);
 stimMinutes = (mdata(1).num_stim_frames*mdata(1).num_stims)/(fps*60);
-roi_stimspks = nan([numRepetitions, numConditions, mdata(1).num_stim_frames]);
-roi_stimtransients = nan([numRepetitions, numConditions, mdata(1).num_stim_frames]);
-roi_DSI = nan(num_rois,2);
-roi_OSI = nan(num_rois,2);
-for t = 1:2
-    %get frame indices for each trial, organized by [repetition, conditions, frame]
-    trial_order = repmat(0:(numConditions-1),[numRepetitions 1]);
-    trial_order = trial_order + repmat(numConditions*(0:numRepetitions-1)',[1 numConditions]); %value for trial1 rep2 is now numConds+1, eg
-    start_of_trial_frame = trial_order*numFramesPerTrial; %values are now frame numbers, relative to the first trial of each repetition
 
-    %sort by increasing condition
-    [~, sorted_col_order] = sort(vstruct(t).order,2);
-    sorted_row_order = repmat((1:numRepetitions)',[1 numConditions]);
-    sorted_trial_start_frame = start_of_trial_frame(sub2ind([numRepetitions numConditions],sorted_row_order,sorted_col_order));
-    sorted_trial_start_frame = sorted_trial_start_frame + stimStart; %values are the actual frame numbers when each trial started
-
-    stimFrames = repmat(sorted_trial_start_frame, [1 1 numFramesPerTrial]); %3rd dimension will store all frames for each trial
-    stimFrames = stimFrames + repmat(permute((0:numFramesPerTrial-1),[1 3 2]),[numRepetitions, numConditions, 1]);
-
-
-    if t==1
-        spks = spks_1;
-        F = F_1;
-    else
-        spks = spks_2;
-        F = F_2;
-    end
-    rois = roi_info(:,t);
-    for r = 1:num_rois
-        roi = rois(r);
-        if ~isnan(roi)
-            %spikes/min
-            roi_spikespermin(r,t) = sum(spks(roi,1:mdata(t).num_spont_frames))/spontMinutes; %spontaneous 
-            roi_spikespermin(r,2+t) = sum(spks(roi,1+mdata(t).num_spont_frames:end))/stimMinutes; %stim-evoked
+column_names = {'1: cell type (user classified)';...
+                '2: center x';...
+                '3: center y';...
+                '4: transients-per-minute';...
+                '5: OSI';...
+                '6: DSI';...
+                '7: gcamp brightness';...
+                '8: eyfp brightness';...
+                '9: mruby2 brightness';...
+                '10: roi # (of tracked cells)'};
             
-            %transients/min
-            roi_transientspermin(r,t) = sum(spks(roi,1:mdata(t).num_spont_frames)>0)/spontMinutes; %spontaneous 
-            roi_transientspermin(r,2+t) = sum(spks(roi,1+mdata(t).num_spont_frames:end)>0)/stimMinutes; %stim-evoked 
             
-            %kontransients/min
-            tmp = F(roi,1:mdata(t).num_spont_frames);
-            tmpmean = prctile(tmp,20);
-            tmpstd = std(tmp);
-            tmp = tmp>(tmpmean+3*tmpstd);
-            tmp = diff(tmp)==1;
-            roi_kontransientspermin(r,t) = sum(tmp)/spontMinutes;
+%% load and process cell data for all timepoints
+cell_data = nan(max(num_rois),9,num_timepoints); %[num_rois, num_datatypes, num_timepoints]
+for t = 1:num_timepoints
+    % load suite2p (for activity, OSI, DSI, x, y, [masks]
+    filename = fullfile(analysis_folder,num2str(t),'suite2p','suite2p','plane0','Fall.mat');
+    assert(isfile(filename),['suite2p Fall.mat file note found in analysis folder for timepoint ' num2str(t)])
+    load(filename);
+    FmFneu = F-(0.7*Fneu);
+    
+    % load unmixed colors (use masks for brightness)
+    filename = fullfile(analysis_folder,num2str(t),'celltypes_unmixed.tif');
+    assert(isfile(filename),['celltypes_unmixed.tif file note found in analysis folder for timepoint ' num2str(t)])
+    unmixed = read_file(filename);
+    
+    % analyze spontaneous activity (konnerth-like measurement of "transients")
+    num_frames = length(spontFrames);
+    spontF = FmFneu(:,spontFrames);
+    estBaselineF = prctile(spontF,50,2); %%%%%%%%%%%fix this
+    shiftF = spontF-repmat(estBaselineF,[1 num_frames]);    
+    noiseF = shiftF;
+    noiseF(noiseF>0) = nan;
+    noiseF = [noiseF -noiseF];
+    noiseStd = std(noiseF,0,2,'omitnan');
+    estThresholdF = estBaselineF + (3*noiseStd);
+    aboveThresholdF = spontF>repmat(estThresholdF,[1 num_frames]);
+    transientsF = aboveThresholdF & logical([ones(size(F,1),1) diff(aboveThresholdF,1,2)==1]); %turn spans of 1's into a single 1
+    transientsperminute = sum(transientsF,2)/spontMinutes;
+    cell_data(1:num_rois(t),4,t) = transientsperminute;
+    
+    % analyze stimulus-evoked activity data
+    stimulus_data = nan(num_rois(t),numFramesPerTrial,numRepetitions,numConditions);
+    for r = 1:numRepetitions
+        for c = 1:numConditions
+            %get info about the current experimental condition
+            cond = vstruct(t).order(r,c);
+            start_frame = stimStart + ((c-1)*numFramesPerTrial) + ((r-1)*numFramesPerTrial*numConditions);
+            frame_inds = start_frame:(start_frame+numFramesPerTrial-1);
             
-            %organize spikes, F, Fneu by [repetition, trial, frame, roi]
-            roi_stimspks = spks(sub2ind(size(F),r*ones(size(stimFrames)),stimFrames));
-            roi_stimtransients = spks(sub2ind(size(F),r*ones(size(stimFrames)),stimFrames))>0;
-            
-            %average spike data for repetitions
-            sumStimSpks = sum(roi_stimspks(:,:,stimOnFrames),3); %sum the spikes from 0-2s
-            meanSumStimSpks = mean(sumStimSpks(repetitionsToAverage,:),1); %average repetitions
-            
-            %OSI (spks)
-            tmpSpksO = mean([meanSumStimSpks(1:6); meanSumStimSpks(7:12)]);
-            [maxSpk,maxI] = max(tmpSpksO);
-            oppI = 1+mod((maxI+3)-1,6);
-            oppSpk = tmpSpksO(oppI);
-            roi_OSI(r,t) = (maxSpk-oppSpk)/(maxSpk+oppSpk);
-            
-            %DSI (spks)
-            [maxSpk,maxI] = max(meanSumStimSpks(1:12)); %condition which cause the most spikes
-            oppI = 1+mod((maxI+6)-1,12); %condition on the opposite angle
-            oppSpk = meanSumStimSpks(oppI);
-            roi_DSI(r,t) = (maxSpk-oppSpk)/(maxSpk+oppSpk);
+            %get fluorescence traces for all ROIs for this condition
+            stimulus_data(:,:,r,cond) = FmFneu(:,frame_inds);
         end
     end
+    stimDF = 100*((mean(stimulus_data(:,stimOnFrames,:,:),2)./mean(stimulus_data(:,baselineFrames,:,:),2))-1); %mean dF/F from 0-2s over baseline (-2-0s)
+    stimDF = permute(stimDF,[1 3 4 2]); %[roi, rep, cond]
+    meanStimDF = mean(stimDF(:,repetitionsToAverage,:),2,'omitnan');
+    meanStimDF = permute(meanStimDF,[1 3 2]);
     
-   %polar plot code goes here, after the DSI has been calculated for all rois
-   
-end
-%%plot before/after silent/normal/hyperactive
-bins = zeros(2,3); %[time, bin]
-for t = 1:2
-    spm = roi_kontransientspermin(:,t);
-    spm(isnan(spm)) = [];
-    bins(t,1) = bins(t,1) + sum(spm<=0.25);
-    bins(t,2) = bins(t,2) + sum(spm>0.25 & spm<=4);
-    bins(t,3) = bins(t,3) + sum(spm>4);
-end
+    for roi = 1:num_rois(t)
+        %OSI
+        meanActivity = mean([meanStimDF(roi,1:6); meanStimDF(roi,7:12)]); %mean activity for each orientation
+        [maxActivity,maxI] = max(meanActivity); %orientation of max activity
+        oppI = 1+mod((maxI+3)-1,6); %orthogonal orientation
+        oppActivity = meanActivity(oppI); %activity of orthogonal orientation
+        oppActivity = max([0 oppActivity]); %cap at 0
+        OSI = (maxActivity-oppActivity)/(maxActivity+oppActivity); %orientation selectivity index
+        cell_data(roi,5,t) = OSI;
 
-%%
-colors = linspecer(2);
-plot_size = [1000 250];
-figure('Position',[100 100 plot_size]);
-subplot(1,3,1);
-y = roi_kontransientspermin(:,2);
-y(isnan(y)) = [];
-y = y';
-h = histogram(y,(0:10));
-h.FaceColor = colors(2,:);
-h.FaceAlpha = 0.6;
-hold on
-y = roi_kontransientspermin(:,1);
-y(isnan(y)) = [];
-y = y';
-h = histogram(y,(0:10));
-h.FaceColor = colors(1,:);
-h.FaceAlpha = 0.6;
-hold on
-ylim([0 48])
-xlabel('transients/min');
-ylabel('# of ROIs');
-title('spontaneous activity distribution');
-
-subplot(1,3,2);
-% x = [1 2];
-y = bins';
-bar(y);
-% b = gca;
-% b.FaceColor = 'flat';
-% b(1).CData = repmat(colors(1,:),[3 1]);
-% b(2).CData = repmat(colors(2,:),[3 1]);
-xlim([0 4])
-ylim([0 48]);
-xticklabels({'silent','normal','hyperactive'})
-ylabel('# ROIs');
-% ax = gca;
-% ax.Position = [0.13 0.11 0.12 0.815];
-title('activity classification')
-
-
-%% plot before/after cumulative distribution plots
-colors = linspecer(2);
-plot_size = [1000 250];
-figure('Position',[100 100 plot_size]);
-subplot(1,4,1);
-x = [1 2];
-y = num_active;
-b = bar(x,y,0.5);
-b.FaceColor = 'flat';
-b.CData = colors;
-xlim([0.5 2.5])
-ylim([0 150]);
-xticklabels({'baseline','treated'})
-ylabel('# active ROIs');
-ax = gca;
-ax.Position = [0.13 0.11 0.12 0.815];
-title('active cells')
-%spontaneous activity (transients per min)
-subplot(1,4,2);
-max_tpm = max(roi_transientspermin,[],'all');
-x = 0:0.1:max_tpm;
-for d = 1:2
-    y = zeros(size(x));
-    roi_inds = find(~isnan(roi_info(:,d)));
-    yvals = floor(10*sort(roi_transientspermin(roi_inds,d)));
-    for i = yvals
-        y(i+1) = y(i+1)+1;
+        %DSI
+        [maxActivity,maxI] = max(meanStimDF(roi,1:12)); %direction of max activity
+        oppI = 1+mod((maxI+6)-1,12); %opposite direction
+        oppActivity = meanStimDF(roi,oppI); %activity of opposite direction
+        oppActivity = max([0 oppActivity]); %cap at 0
+        DSI = (maxActivity-oppActivity)/(maxActivity+oppActivity); %direction selectivity index
+        cell_data(roi,6,t) = DSI;
+        
+        %get cell x,y positions and brightnesses
+        xpix = stat{roi}.xpix+1;
+        ypix = stat{roi}.ypix+1;
+        
+        cell_data(roi,2,t) = mean(xpix); %col 2: center x
+        cell_data(roi,3,t) = mean(ypix); %col 3: center y
+        
+        cell_data(roi,7,t) = mean(unmixed(sub2ind(size(unmixed),ypix,xpix,1*ones(size(xpix)))),'omitnan'); % col 7: mean gcamp brightness
+        cell_data(roi,8,t) = mean(unmixed(sub2ind(size(unmixed),ypix,xpix,2*ones(size(xpix)))),'omitnan'); % col 8: mean eyfp brightness
+        cell_data(roi,9,t) = mean(unmixed(sub2ind(size(unmixed),ypix,xpix,3*ones(size(xpix)))),'omitnan'); % col 9: mean mruby2 brightness
+        
+        %get user classification of cell type
+        if single_roi_info
+            cell_data(roi,1,t) = roi_info(roi,2,t);
+        else
+            roi_info_name = ['roi_info_' num2str(t)];
+            roi_info_t = eval(roi_info_name);
+            cell_data(roi,1,t) = roi_info_t(roi,2);
+        end
     end
-    y = y/10;
-    y = cumsum(y);
-    y = y/max(y);
-    plot(x,y,'-k','LineWidth',1.5,'Color',colors(d,:));
-    hold on
 end
-% legend({'baseline','treated'},'Location','NorthEastOutside')
-xlabel('transients/min')
-ylabel('cumulative probability')
-xlim([30 50])
-ylim([0 1])
-yticks([0 0.2 0.4 0.6 0.8 1])
-title('spontaneous activity')
 
-%spontaneous activity (spikes per min)
-% subplot(1,4,2);
-% max_tpm = max(roi_spikespermin,[],'all');
-% x = 0:max_tpm;
-% for d = 1:2
-%     y = zeros(size(x));
-%     roi_inds = find(~isnan(roi_info(:,d)));
-%     yvals = floor(sort(roi_spikespermin(roi_inds,d)/1000));
-%     for i = yvals
-%         y(i+1) = y(i+1)+1;
-%     end
-%     y = cumsum(y);
-%     y = y/max(y);
-%     plot(x,y,'-k','LineWidth',1.5,'Color',colors(d,:));
-%     hold on
-% end
-% % legend({'baseline','treated'},'Location','NorthEastOutside')
-% xlabel('spikes/min')
-% ylabel('cumulative probability')
-% xlim([0 200])
-% ylim([0 1])
-% yticks([0 0.2 0.4 0.6 0.8 1])
-% title('spontaneous activity')
 
-%orientation selectivity
-% figure('Position',[100 100 plot_size]);
-subplot(1,4,3)
-x = 0:0.01:1;
-for d = 1:2
-    y = zeros(1,101);
-    roi_inds = find(~isnan(roi_info(:,d)));
-    yvals = floor(100*sort(roi_OSI(roi_inds,d)));
-    for i = yvals
-        y(i+1) = y(i+1)+1;
+%% organize data for cells tracked across all timepoints
+% num_tracked_cells = 0;
+% tracked_cell_data = nan(num_tracked_cells,10,num_timepoints);
+
+for t = 1:num_timepoints
+    if single_roi_info
+        roi_info_t = roi_info(:,[1 3],t);
+    else
+        roi_info_name = ['roi_info_' num2str(t)];
+        roi_info_t = eval(roi_info_name);
+        roi_info_t = roi_info_t(:,[1 3]);
     end
-    y = y/100;
-    y = cumsum(y);
-    y = y/max(y);
-    plot(x,y,'-k','LineWidth',1.5,'Color',colors(d,:));
-    hold on
-end
-% legend({'baseline','treated'},'Location','NorthEastOutside')
-xlabel('OSI')
-% ylabel('cumulative probability')
-xlim([0 1])
-ylim([0 1])
-xticks([0 0.2 0.4 0.6 0.8 1])
-yticks([0 0.2 0.4 0.6 0.8 1])
-title('orientation selectivity')
-
-%direction selectivity
-subplot(1,4,4)
-% figure('Position',[100 100 plot_size]);
-x = 0:0.01:1;
-for d = 1:2
-    y = zeros(1,101);
-    roi_inds = find(~isnan(roi_info(:,d)));
-    yvals = floor(100*sort(roi_DSI(roi_inds,d)));
-    for i = yvals
-        y(i+1) = y(i+1)+1;
+    
+    t_tracked_rois = find(all(~isnan(roi_info_t),2));
+    roi_info_t(t_tracked_rois,:);
+    size(t_tracked_rois);
+    
+    if t==1
+        rt1 = roi_info_t(t_tracked_rois,:);
+    else
+        rt2 = roi_info_t(t_tracked_rois,:);
+        %%%%%%%%%%% for now, only use rt2 until roi_info problem is fixed
+        
+        %check for duplicates in t1 rois
+        if length(unique(rt2(:,2)))<length(unique(rt2(:,1)))
+            [~, unique_inds, ~] = unique(rt2(:,2)); %indices of unique numbers
+            %%%%%%%%%%%% for now, only use the 1st one
+            unique_inds = sort(unique_inds);
+            rt2 = rt2(unique_inds,:);
+            tracked_rois = fliplr(rt2);
+            num_tracked_rois = size(rt2,1);
+        end
     end
-    y = y/100;
-    y = cumsum(y);
-    y = y/max(y);
-    plot(x,y,'-k','LineWidth',1.5,'Color',colors(d,:));
-    hold on
 end
-% legend({'baseline','treated'},'Location','NorthEastOutside')
-xlabel('DSI')
-% ylabel('cumulative probability')
-xlim([0 1])
-ylim([0 1])
-xticks([0 0.2 0.4 0.6 0.8 1])
-yticks([0 0.2 0.4 0.6 0.8 1])
-title('direction selectivity')
+
+% sort tracked rois by increasing combined roi #
+[~, order] = sort(sum(tracked_rois,2));
+tracked_rois = tracked_rois(order,:);
+
+%loop through number of pairs
+tracked_cell_data = nan(num_tracked_rois,10,num_timepoints); %[num_rois, num_datatypes, num_timepoints]
+for r = 1:num_tracked_rois
+    %for each pair, populate tracked data with cell data
+    for t = 1:num_timepoints
+        roi = tracked_rois(r,t);
+        tracked_cell_data(r,1:9,t) = cell_data(roi,:,t);
+        tracked_cell_data(r,10,t) = roi;
+    end
+end
+
+
+%% save data
+filename = fullfile(analysis_folder,'cell_data.mat');
+save(filename,'cell_data','tracked_cell_data','column_names');
+
 
