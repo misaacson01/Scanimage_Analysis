@@ -186,9 +186,9 @@ for t = 1:num_timepoints
             %%%%%%%%%%%% for now, only use the 1st one
             unique_inds = sort(unique_inds);
             rt2 = rt2(unique_inds,:);
-            tracked_rois = fliplr(rt2);
-            num_tracked_rois = size(rt2,1);
         end
+        tracked_rois = fliplr(rt2);
+        num_tracked_rois = size(rt2,1);
     end
 end
 
