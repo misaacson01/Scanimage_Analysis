@@ -115,23 +115,29 @@ for t = 1:num_timepoints
     stimDF = permute(stimDF,[1 3 4 2]); %[roi, rep, cond]
     meanStimDF = mean(stimDF(:,repetitionsToAverage,:),2,'omitnan');
     meanStimDF = permute(meanStimDF,[1 3 2]);
+    angles = deg2rad(0:30:330);
     
     for roi = 1:num_rois(t)
+        meanActivity = meanStimDF(roi,1:12);
+        
         %OSI
-        meanActivity = mean([meanStimDF(roi,1:6); meanStimDF(roi,7:12)]); %mean activity for each orientation
-        [maxActivity,maxI] = max(meanActivity); %orientation of max activity
-        oppI = 1+mod((maxI+3)-1,6); %orthogonal orientation
-        oppActivity = meanActivity(oppI); %activity of orthogonal orientation
-        oppActivity = max([0 oppActivity]); %cap at 0
-        OSI = (maxActivity-oppActivity)/(maxActivity+oppActivity); %orientation selectivity index
+        OSI_complex = sum(meanActivity.*(exp(2*1i*angles)))./sum(meanActivity);
+        OSI = abs(OSI_complex);
+%         [maxActivity,maxI] = max(meanActivity); %orientation of max activity
+%         oppI = 1+mod((maxI+3)-1,6); %orthogonal orientation
+%         oppActivity = meanActivity(oppI); %activity of orthogonal orientation
+%         oppActivity = max([0 oppActivity]); %cap at 0
+%         OSI = (maxActivity-oppActivity)/(maxActivity+oppActivity); %orientation selectivity index
         cell_data(roi,5,t) = OSI;
 
         %DSI
-        [maxActivity,maxI] = max(meanStimDF(roi,1:12)); %direction of max activity
-        oppI = 1+mod((maxI+6)-1,12); %opposite direction
-        oppActivity = meanStimDF(roi,oppI); %activity of opposite direction
-        oppActivity = max([0 oppActivity]); %cap at 0
-        DSI = (maxActivity-oppActivity)/(maxActivity+oppActivity); %direction selectivity index
+%         [maxActivity,maxI] = max(meanStimDF(roi,1:12)); %direction of max activity
+%         oppI = 1+mod((maxI+6)-1,12); %opposite direction
+%         oppActivity = meanStimDF(roi,oppI); %activity of opposite direction
+%         oppActivity = max([0 oppActivity]); %cap at 0
+%         DSI = (maxActivity-oppActivity)/(maxActivity+oppActivity); %direction selectivity index
+        DSI_complex = sum(meanActivity.*(exp(1i*angles)))./sum(meanActivity);
+        DSI = abs(DSI_complex);
         cell_data(roi,6,t) = DSI;
         
         %get cell x,y positions and brightnesses
