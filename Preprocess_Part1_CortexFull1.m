@@ -24,6 +24,7 @@ for d = 1:num_dirs
     dstr = num2str(d);
     mkdir(fullfile(save_dir,dstr));
     mkdir(fullfile(save_dir,dstr,'suite2p'));
+    mkdir(fullfile(save_dir,dstr,'suite2p_comp'));
 end
 
 %load metadata for each experiment
@@ -193,6 +194,30 @@ for d = 1:num_dirs
     colorIm(:,:,2) = Unmixed(:,:,2)/2;
     imwrite(uint8(100*colorIm/prctile(colorIm,98,'all')),fullfile(save_dir,dstr,'YellowRed.tif'));
     
+    %combining unmixed red/yellow images into ch2 functional (for suite2p manual ROIs)
+    %get the mean ch2 image in green
+    ch2_functional = read_file(fullfile(save_dir,dstr,'MC functional','CH2_functional.tif'));
+    ch2_functional_mean = mean(ch2_functional,3,'omitnan');
+    %get the red/yellow image
+    anatomical_mean = mean(Unmixed(:,:,[2 3]),3,'omitnan');
+
+    %run a GUI to manually register
+    registerApp = manualRegistration(ch2_functional_mean,anatomical_mean);
+    waitfor(registerApp,'editing','off');
+    rotation = registerApp.rotation;
+    translation = registerApp.translation;
+    registerApp.delete
+    
+    % rotate/translate the red/yellow image
+    tform = rigidtform2d(rotation,translation);
+    centerOutput = affineOutputView(size(anatomical_mean),tform,"BoundsStyle","CenterOutput");
+    anatomical_mean = imwarp(anatomical_mean,tform,"OutputView",centerOutput);
+    
+    % create a composite image for suite2p
+    ch2_functional_composite = (ch2_functional/2) + repmat(anatomical_mean/2,[1 1 num_ch2_frames]);
+    imageName = fullfile(save_dir,dstr,'suite2p_comp','CH2_functional_comp.tif');
+    saveastiff(ch2_functional_composite,imageName,opts_tiff);
+
 %     %%%% spectral unmixing of stacks for plaques, vessels %%%%
 %     %plaques stack
 %     tmp = read_file(fullfile(exp_dirs{d},'plaques_00001.tif'));
