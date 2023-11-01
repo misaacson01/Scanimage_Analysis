@@ -43,11 +43,20 @@ colors_2 = colors(o,:);
         
 %create tif stack of before/after:
 %% 1. mean functional image
-figure('Position',[100 100 fliplr(image_size)]);
 mean_functional_1 = read_file(fullfile(analysis_folder,'1','MC functional','TEMPLATE_functional.tif'));
 mean_functional_2 = read_file(fullfile(analysis_folder,'2','MC functional','TEMPLATE_functional.tif'));
 [h, w] = size(mean_functional_1);
 mean_functional = uint16(2*[mean_functional_1 mean_functional_2]);
+
+%resize figure to match aspect ratio of original image
+aspect_ratio = w/h;
+if aspect_ratio<1
+    image_size(2) = round(image_size(2)*aspect_ratio);
+elseif aspect_ratio>1
+    image_size(1) = round(image_size(1)/aspect_ratio);
+end
+
+figure('Position',[100 100 fliplr(image_size)]);
 imshow(imresize(mean_functional,image_size));
 axis off
 box off
