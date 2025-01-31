@@ -1,7 +1,5 @@
 %% settings
-
-analysis_folder = "C:\Users\misaa\Desktop\2022-10-17 14-50 22_08_30_31 full20x_M_APP_ly6g_mouse_R_spot_2";
-
+analysis_folder = "D:\SN Lab\Visual Cortex\Raw Data\2022-10-10 16-13 22_06_30_07_01 full20x_F_APP_ly6g_mouse_L_3331";
 
 
 %% load files and metadata
@@ -60,17 +58,20 @@ stimMinutes = (mdata(1).num_stim_frames*mdata(1).num_stims)/(fps*60);
 column_names = {'1: cell type (user classified)';...
                 '2: center x';...
                 '3: center y';...
-                '4: transients-per-minute';...
+                '4: spikes-per-minute';...
                 '5: OSI';...
                 '6: DSI';...
                 '7: gcamp brightness';...
                 '8: eyfp brightness';...
                 '9: mruby2 brightness';...
-                '10: roi # (of tracked cells)'};
+                '10: transients-per-minute-f';...
+                '11: transients-per-minute-s';...
+                '12: roi # (of tracked cells)';...
+                '13: average Fisher information'};
             
             
 %% load and process cell data for all timepoints
-cell_data = nan(max(num_rois),9,num_timepoints); %[num_rois, num_datatypes, num_timepoints]
+cell_data = nan(max(num_rois),12,num_timepoints); %[num_rois, num_datatypes, num_timepoints]
 for t = 1:num_timepoints
     % load suite2p (for activity, OSI, DSI, x, y, [masks]
     filename = fullfile(analysis_folder,num2str(t),'suite2p','suite2p','plane0','Fall.mat');
@@ -83,10 +84,12 @@ for t = 1:num_timepoints
     assert(isfile(filename),['celltypes_unmixed.tif file note found in analysis folder for timepoint ' num2str(t)])
     unmixed = read_file(filename);
     
-    % analyze spontaneous activity (konnerth-like measurement of "transients")
+    % analyze spontaneous activity 
     num_frames = length(spontFrames);
+
+    %konnerth-like measurement of "transients")
     spontF = FmFneu(:,spontFrames);
-    estBaselineF = prctile(spontF,50,2); %%%%%%%%%%%fix this
+    estBaselineF = prctile(spontF,50,2); %%%%%%%%%%%improve this?
     shiftF = spontF-repmat(estBaselineF,[1 num_frames]);    
     noiseF = shiftF;
     noiseF(noiseF>0) = nan;
@@ -95,8 +98,16 @@ for t = 1:num_timepoints
     estThresholdF = estBaselineF + (3*noiseStd);
     aboveThresholdF = spontF>repmat(estThresholdF,[1 num_frames]);
     transientsF = aboveThresholdF & logical([ones(size(F,1),1) diff(aboveThresholdF,1,2)==1]); %turn spans of 1's into a single 1
-    transientsperminute = sum(transientsF,2)/spontMinutes;
-    cell_data(1:num_rois(t),4,t) = transientsperminute;
+    transientsperminute_f = sum(transientsF,2)/spontMinutes;
+
+    %spike-based "transients"
+    transientsperminute_s = sum(spks(:,spontFrames)>0,2)/spontMinutes;
+
+    %spikes-per-minute
+    spikesperminute = sum(spks(:,spontFrames),2)/spontMinutes;
+    cell_data(1:num_rois(t),4,t) = spikesperminute;
+    cell_data(1:num_rois(t),10,t) = transientsperminute_f;
+    cell_data(1:num_rois(t),11,t) = transientsperminute_s;
     
     % analyze stimulus-evoked activity data
     stimulus_data = nan(num_rois(t),numFramesPerTrial,numRepetitions,numConditions);
@@ -114,29 +125,21 @@ for t = 1:num_timepoints
     stimDF = 100*((mean(stimulus_data(:,stimOnFrames,:,:),2)./mean(stimulus_data(:,baselineFrames,:,:),2))-1); %mean dF/F from 0-2s over baseline (-2-0s)
     stimDF = permute(stimDF,[1 3 4 2]); %[roi, rep, cond]
     meanStimDF = mean(stimDF(:,repetitionsToAverage,:),2,'omitnan');
-    meanStimDF = permute(meanStimDF,[1 3 2]);
+    meanStimDF = permute(meanStimDF,[1 3 2]); %[roi, cond]
+    stdStimDF = std(stimDF(:,repetitionsToAverage,:),0,2,'omitnan');
+    stdStimDF = permute(stdStimDF,[1 3 2]); %[roi, cond]
     angles = deg2rad(0:30:330);
     
     for roi = 1:num_rois(t)
         meanActivity = meanStimDF(roi,1:12);
         
         %OSI
-        OSI_complex = sum(meanActivity.*(exp(2*1i*angles)))./sum(meanActivity);
+        OSI_complex = sum(meanActivity.*(exp(2*1i*angles)))./sum(abs(meanActivity));
         OSI = abs(OSI_complex);
-%         [maxActivity,maxI] = max(meanActivity); %orientation of max activity
-%         oppI = 1+mod((maxI+3)-1,6); %orthogonal orientation
-%         oppActivity = meanActivity(oppI); %activity of orthogonal orientation
-%         oppActivity = max([0 oppActivity]); %cap at 0
-%         OSI = (maxActivity-oppActivity)/(maxActivity+oppActivity); %orientation selectivity index
         cell_data(roi,5,t) = OSI;
 
         %DSI
-%         [maxActivity,maxI] = max(meanStimDF(roi,1:12)); %direction of max activity
-%         oppI = 1+mod((maxI+6)-1,12); %opposite direction
-%         oppActivity = meanStimDF(roi,oppI); %activity of opposite direction
-%         oppActivity = max([0 oppActivity]); %cap at 0
-%         DSI = (maxActivity-oppActivity)/(maxActivity+oppActivity); %direction selectivity index
-        DSI_complex = sum(meanActivity.*(exp(1i*angles)))./sum(meanActivity);
+        DSI_complex = sum(meanActivity.*(exp(1i*angles)))./sum(abs(meanActivity));
         DSI = abs(DSI_complex);
         cell_data(roi,6,t) = DSI;
         
@@ -151,6 +154,13 @@ for t = 1:num_timepoints
         cell_data(roi,8,t) = mean(unmixed(sub2ind(size(unmixed),ypix,xpix,2*ones(size(xpix)))),'omitnan'); % col 8: mean eyfp brightness
         cell_data(roi,9,t) = mean(unmixed(sub2ind(size(unmixed),ypix,xpix,3*ones(size(xpix)))),'omitnan'); % col 9: mean mruby2 brightness
         
+        %get fisher information score
+        dMu_ds = diff(meanStimDF(roi,1:12));  % Numerical derivative of mean response w.r.t. stimulus
+        dMu_ds(12) = meanStimDF(roi,1)-meanStimDF(roi,12); %circle back to the start
+        FI = (dMu_ds.^2) ./ stdStimDF(roi,1:12);  % FI per stimulus
+        FI = mean(FI); % average across stimulus to get average Fisher Information
+        cell_data(roi,12,t) = FI;
+
         %get user classification of cell type
         if single_roi_info
             cell_data(roi,1,t) = roi_info(roi,2,t);
@@ -203,13 +213,13 @@ end
 tracked_rois = tracked_rois(order,:);
 
 %loop through number of pairs
-tracked_cell_data = nan(num_tracked_rois,10,num_timepoints); %[num_rois, num_datatypes, num_timepoints]
+tracked_cell_data = nan(num_tracked_rois,13,num_timepoints); %[num_rois, num_datatypes, num_timepoints]
 for r = 1:num_tracked_rois
     %for each pair, populate tracked data with cell data
     for t = 1:num_timepoints
         roi = tracked_rois(r,t);
-        tracked_cell_data(r,1:9,t) = cell_data(roi,:,t);
-        tracked_cell_data(r,10,t) = roi;
+        tracked_cell_data(r,[1:11 13],t) = cell_data(roi,:,t);
+        tracked_cell_data(r,12,t) = roi;
     end
 end
 
