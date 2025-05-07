@@ -28,8 +28,10 @@ end
 
 %load metadata for each experiment
 for d = 1:num_dirs
-    mdataname = ls(fullfile(exp_dirs{d},'*metadata.mat'));
-    vsname = ls(fullfile(exp_dirs{d},'*vs.mat'));
+    mdataname = dir(fullfile(exp_dirs{d},'*metadata.mat'));
+    mdataname = mdataname(1).name;
+    vsname = dir(fullfile(exp_dirs{d},'*vs.mat'));
+    vsname = vsname(1).name;
     load(fullfile(exp_dirs{d},mdataname),'metadata');
     mdata(d) = metadata;
     load(fullfile(exp_dirs{d},vsname),'vs');
