@@ -44,7 +44,7 @@ for d = 1:num_dirs
     dstr = num2str(d);
     fprintf(['Starting pre-processing for exp ' dstr ' (of ' num2str(num_dirs) '):\n']);
    
-    %%%% functional imaging %%%%
+    %%functional imaging%%
     %concatentate all functional imaging together into "functional" folder
     fprintf('Concatenating files (this can take some time)... ')
     filenames = dir(fullfile(exp_dirs{d},'stim','*.tif'));

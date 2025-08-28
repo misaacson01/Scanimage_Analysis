@@ -64,6 +64,10 @@ else
     error('unexpected number of frames')
 end
 
+%manually set start/stop frames
+startframe = 204;
+stopframe = 206;
+
 regwarning_id = 'images:imregcorr:weakPeakCorrelation';
 warning('off',regwarning_id) %turn off warning for poor registration (many are expected)
 for z = search_zoom_ind
@@ -73,7 +77,11 @@ for z = search_zoom_ind
     cur_func_image = cur_func_image - prctile(cur_func_image(:),1);
     cur_func_image = cur_func_image/prctile(cur_func_image(:),99);
     for i = startframe:stopframe 
-        waitbar(0.9*((i-startframe)/(stopframe-startframe)),wfig,['finding imaging plane within volume (z' num2str(z) ' of ' num2str(num_zooms) ')'])
+        if isvalid(wfig)
+            waitbar(0.9*((i-startframe)/(stopframe-startframe)),wfig,['finding imaging plane within volume (z' num2str(z) ' of ' num2str(num_zooms) ')'])
+        else
+            wfig = waitbar(0.9*((i-startframe)/(stopframe-startframe)),['finding imaging plane within volume (z' num2str(z) ' of ' num2str(num_zooms) ')']);
+        end
         cur_stack_image = double(green_plaques(:,:,i));
         cur_stack_image = imgaussfilt(cur_stack_image,filt_sigma);
         cur_stack_image = cur_stack_image - prctile(cur_stack_image(:),1);
@@ -84,7 +92,6 @@ for z = search_zoom_ind
     end
 end
 warning('on',regwarning_id)
-delete(wfig)
 
 %plot correlation by zoom/depth
 figure()
@@ -102,7 +109,12 @@ fprintf('functional plane correlated to plaque volume\n')
 
 
 %% create overlay for manual verification
-waitbar(0.91,wfig,'creating imaging plane/stack overlay for manual verification')
+if isvalid(wfig)
+    waitbar(0.91,wfig,'creating imaging plane/stack overlay for manual verification')
+else
+    wfig = waitbar(0.91,'creating imaging plane/stack overlay for manual verification');
+end
+
 cur_func_image = imresize(green_functional,[h w]/best_zoom);
 cur_func_image = cur_func_image - prctile(cur_func_image(:),1);
 cur_func_image = cur_func_image/prctile(cur_func_image(:),99);
@@ -153,7 +165,11 @@ fprintf('best fit displayed\n')
 
 
 %% perform plaque binarization
-waitbar(0.91,wfig,'binarizing plaque volume')
+if isvalid(wfig)
+    waitbar(0.91,wfig,'binarizing plaque volume')
+else
+    wfig = waitbar(0.91,'binarizing plaque volume');
+end
 switch best_zoom
     case 1
         stack_zoom = 1.5;
@@ -176,41 +192,42 @@ mpp_z = 0.5; %microns per pixel, z axis
 p = polyfit(single(green_plaques(:)), single(blue_plaques(:)), 1); % 1st-order polynomial fit (linear)
 alpha = p(1); % slope is the scaling factor
 plaques = single(blue_plaques) - alpha * single(green_plaques);
-plaques = imresize(plaques,round([h w]*(mpp_xy/mpp_z))); %make stack isometric
+
+%make stack isometric
+plaques = imresize(plaques,round([h w]*(mpp_xy/mpp_z)));
 plaques = max(plaques, 0); % clip negative values
 plaques = imgaussfilt3(plaques,filt_sigma);
 
-%binarize volume frame-by-frame
-binary_vol = false(size(plaques));
-plaques_b = 0.5*plaques/prctile(plaques,99,'all');
-% plaques_b = plaques;
-for z = 1:size(plaques, 3)
-    slice = plaques_b(:,:,z);
-    T = adaptthresh(slice, 0.1, 'NeighborhoodSize', 201); %
-    binary_vol(:,:,z) = imbinarize(slice, T);
-end
+%binarize plaques using 5*sd threshold above bottom 95%
+prc95 = prctile(plaques(:),95);
+bottom95 = plaques(plaques<prc95);
+mean_bottom95 = mean(bottom95(:));
+std_bottom95 = std(bottom95(:));
+threshold = mean_bottom95+(5*std_bottom95);
+binary_vol = plaques>threshold;
 
 %find connected components and remove smallest
 cc = bwconncomp(binary_vol, 26); % 26-connectivity for 3D
 stats = regionprops3(cc, 'Volume', 'Centroid');
-min_spot_radius = 10;
-min_spot_volume = (4/3)*pi*(min_spot_radius^3);
+min_plaque_radius = 5/mpp_z; %minimum radius, in pixels
+min_plaque_volume = (4/3)*pi*(min_plaque_radius^3);
 results.rawstats = stats;
 if isempty(stats)
     disp('no plaques detected');
     plaques_bin = false(size(corrected_vol));
 else
-    plaques_bin = ismember(labelmatrix(cc), find(stats.Volume>=min_spot_volume));
+    plaques_bin = ismember(labelmatrix(cc), find(stats.Volume>=min_plaque_volume));
 end
-stats = stats(stats.Volume >= min_spot_volume, :);
+stats = stats(stats.Volume >= min_plaque_volume, :);
 results.stats = stats;
-results.min_spot_radius = min_spot_radius;
-results.min_spot_volume = min_spot_volume;
+results.min_plaque_radius = min_plaque_radius;
+results.min_plaque_volume = min_plaque_volume;
 results.plaques_bin = plaques_bin;
 
 %visualize plaque binarization
-% volshow(plaques_bin)
-plaques_rb = plaques_b/3;
+volshow(plaques_bin)
+plaques_b = plaques/(mean_bottom95+(10*std_bottom95));
+plaques_rb = plaques_b/5;
 plaques_rb(plaques_bin) = 1;
 ready_to_save = true;
 if isfile(fullfile(analysis_folder,'plaques_bin_check.tif'))
@@ -221,7 +238,7 @@ try
 catch
     warning('couldn''t save "plaques_bin_check.tif"; it might already exist and matlab can''t delete it')
 end
-fprintf('plaque volume binarized (plaques vs not plaques)\n')
+fprintf('plaque volume binarized\n')
 
 
 %% calculate distance to nearest plaque for every pixel of the cell plane
@@ -238,9 +255,12 @@ minzdist = abs(zdist).*tmp;
 minzdist = min(minzdist,[],3); %z-distance to closest plaque
 [xmap,ymap] = meshgrid(linspace(1,w,w_iso),linspace(1,h,h_iso)); %x/y-maps based on isometric volume
 
-wfig = waitbar(0,'calculating distance to plaques');
 for x_ind = 1:length(x_pos)
-    waitbar(0.92 + 0.08*(x_ind/length(x_pos)),wfig,'calculating distance to plaques')
+    if isvalid(wfig)
+        waitbar(0.92 + 0.08*(x_ind/length(x_pos)),wfig,'calculating distance to plaques')
+    else
+        wfig = waitbar(0.92 + 0.08*(x_ind/length(x_pos)),'calculating distance to plaques');
+    end
     for y_ind = 1:length(y_pos)
     % 
         %create 3D map of distance to position
