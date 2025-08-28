@@ -65,8 +65,8 @@ else
 end
 
 %manually set start/stop frames
-startframe = 204;
-stopframe = 206;
+% startframe = 204;
+% stopframe = 206;
 
 regwarning_id = 'images:imregcorr:weakPeakCorrelation';
 warning('off',regwarning_id) %turn off warning for poor registration (many are expected)
@@ -186,7 +186,7 @@ end
 filt_sigma = 5;
 pixelSize = getPixelSize('3', datetime('7/1/2018'), 'Zeiss 20x', stack_zoom); %0.3907 um/pixel @ 1024x1024 & 1.5zoom
 mpp_xy = pixelSize(1)*(1024/w); %microns per pixel, x/y axis
-mpp_z = 0.5; %microns per pixel, z axis
+mpp_z = 1; %microns per pixel, z axis
 
 %subtract green gcamp labels from blue volume assuming linear scale factor
 p = polyfit(single(green_plaques(:)), single(blue_plaques(:)), 1); % 1st-order polynomial fit (linear)
@@ -276,8 +276,7 @@ end
 results.plaque_dist = plaque_dist;
 fprintf('distance to nearest plaque calculated\n')
 
-
-%% visualize plaque distance maps
+%visualize plaque distance maps
 figure()
 imshow(plaque_dist/80)
 cm = hot;
