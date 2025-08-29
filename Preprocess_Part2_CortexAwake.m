@@ -61,7 +61,8 @@ elseif nf>480 && nf<520
     startframe = 100;
     stopframe = 300;
 else
-    error('unexpected number of frames')
+    startframe = min([100 round(nf*0.25)]);
+    stopframe = min([round(nf*0.75) 300]);
 end
 
 %manually set start/stop frames
