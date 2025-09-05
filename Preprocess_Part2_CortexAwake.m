@@ -32,84 +32,100 @@ green_functional = mean(green_functional(:,:,1:mdata(2).num_spont_frames),3,'omi
 [h_f,w_f] = size(green_functional);
 fprintf('data loaded\n')
 
-%% register functional plane assuming different zoom factors to find best fit
-search_zoom_ind = 2; %start with only seaching for zoom 1.333, since this is the most likely situation
-filt_sigma = 3;
-zoom_factors = [1 1.333 1.5 1.666 2];
-num_zooms = length(zoom_factors);
-best_correlations = zeros(1, num_zooms);
-best_slices = zeros(1, num_zooms);
-best_transforms = cell(1, num_zooms);
-%list of zoom factors to test:
-%1 -- same zoom as stack
-%1.3333x zoom relative to stack (e.g. 2.0/1.5)
-%1.5x zoom relative to stack (e.g. 1.5/1.0)
-%1.666x zoom relative to stack (e.g. 2.5/1.5)
-%2x zoom relative to stack (e.g. 2.0/1.0)
 
-[optimizer, metric] = imregconfig('multimodal'); % Suitable for images from different sensors or modalities
-optimizer.MaximumIterations = 300; % Increase iterations for better convergence
-optimizer.InitialRadius = 0.009; % Tune optimizer parameters
-optimizer.Epsilon = 1.5e-4;
-optimizer.GrowthFactor = 1.01;
+%% register functional plane to anatomical stack
+manual_registration = false; %whether or not to manually input x/y translation and rotation, or automatically find these values with slow registration methods
 
-R = nan(nf,num_zooms);
-if nf>180 && nf<220 
-    startframe = 50;
-    stopframe = 150;
-elseif nf>480 && nf<520 
-    startframe = 100;
-    stopframe = 300;
+%for manual registration:
+if manual_registration
+    x_translation = 67; % pixels in x-direction
+    y_translation = 59; % pixels in y-direction  
+    rotation_angle = 0; % degrees (counterclockwise)
+    best_frame = 205;
+    best_zoom = 1.333;
+
+%for automatic registration
 else
-    startframe = min([100 round(nf*0.25)]);
-    stopframe = min([round(nf*0.75) 300]);
-end
-
-%manually set start/stop frames
-% startframe = 204;
-% stopframe = 206;
-
-regwarning_id = 'images:imregcorr:weakPeakCorrelation';
-warning('off',regwarning_id) %turn off warning for poor registration (many are expected)
-for z = search_zoom_ind
-    %create images of functional for current zoom factor
-    cur_func_image = imresize(green_functional,[h w]/zoom_factors(z));
-    cur_func_image = imgaussfilt(cur_func_image,filt_sigma);
-    cur_func_image = cur_func_image - prctile(cur_func_image(:),1);
-    cur_func_image = cur_func_image/prctile(cur_func_image(:),99);
-    for i = startframe:stopframe 
-        if isvalid(wfig)
-            waitbar(0.9*((i-startframe)/(stopframe-startframe)),wfig,['finding imaging plane within volume (z' num2str(z) ' of ' num2str(num_zooms) ')'])
-        else
-            wfig = waitbar(0.9*((i-startframe)/(stopframe-startframe)),['finding imaging plane within volume (z' num2str(z) ' of ' num2str(num_zooms) ')']);
-        end
-        cur_stack_image = double(green_plaques(:,:,i));
-        cur_stack_image = imgaussfilt(cur_stack_image,filt_sigma);
-        cur_stack_image = cur_stack_image - prctile(cur_stack_image(:),1);
-        cur_stack_image = cur_stack_image/prctile(cur_stack_image(:),99);
-        cur_stack_image = imhistmatchn(cur_stack_image,cur_func_image);
-        registered_func_image = imregister(cur_func_image, cur_stack_image, 'rigid', optimizer, metric);
-        R(i,z) = corr2(registered_func_image,cur_stack_image);
+    search_zoom_ind = 2; %start with only seaching for zoom 1.333, since this is the most likely situation
+    filt_sigma = 3;
+    zoom_factors = [1 1.333 1.5 1.666 2];
+    num_zooms = length(zoom_factors);
+    best_correlations = zeros(1, num_zooms);
+    best_slices = zeros(1, num_zooms);
+    best_transforms = cell(1, num_zooms);
+    %list of zoom factors to test:
+    %1 -- same zoom as stack
+    %1.3333x zoom relative to stack (e.g. 2.0/1.5)
+    %1.5x zoom relative to stack (e.g. 1.5/1.0)
+    %1.666x zoom relative to stack (e.g. 2.5/1.5)
+    %2x zoom relative to stack (e.g. 2.0/1.0)
+    
+    [optimizer, metric] = imregconfig('multimodal'); % Suitable for images from different sensors or modalities
+    optimizer.MaximumIterations = 300; % Increase iterations for better convergence
+    optimizer.InitialRadius = 0.009; % Tune optimizer parameters
+    optimizer.Epsilon = 1.5e-4;
+    optimizer.GrowthFactor = 1.01;
+    
+    R = nan(nf,num_zooms);
+    if nf>180 && nf<220 
+        startframe = 50;
+        stopframe = 150;
+    elseif nf>480 && nf<520 
+        startframe = 100;
+        stopframe = 300;
+    else
+        startframe = min([100 round(nf*0.25)]);
+        stopframe = min([round(nf*0.75) 300]);
     end
+    
+    %manually set start/stop frames
+    % startframe = 204;
+    % stopframe = 206;
+    
+    regwarning_id = 'images:imregcorr:weakPeakCorrelation';
+    warning('off',regwarning_id) %turn off warning for poor registration (many are expected)
+    for z = search_zoom_ind
+        %create images of functional for current zoom factor
+        cur_func_image = imresize(green_functional,[h w]/zoom_factors(z));
+        cur_func_image = imgaussfilt(cur_func_image,filt_sigma);
+        cur_func_image = cur_func_image - prctile(cur_func_image(:),1);
+        cur_func_image = cur_func_image/prctile(cur_func_image(:),99);
+        for i = startframe:stopframe 
+            if isvalid(wfig)
+                waitbar(0.9*((i-startframe)/(stopframe-startframe)),wfig,['finding imaging plane within volume (z' num2str(z) ' of ' num2str(num_zooms) ')'])
+            else
+                wfig = waitbar(0.9*((i-startframe)/(stopframe-startframe)),['finding imaging plane within volume (z' num2str(z) ' of ' num2str(num_zooms) ')']);
+            end
+            cur_stack_image = double(green_plaques(:,:,i));
+            cur_stack_image = imgaussfilt(cur_stack_image,filt_sigma);
+            cur_stack_image = cur_stack_image - prctile(cur_stack_image(:),1);
+            cur_stack_image = cur_stack_image/prctile(cur_stack_image(:),99);
+            cur_stack_image = imhistmatchn(cur_stack_image,cur_func_image);
+            registered_func_image = imregister(cur_func_image, cur_stack_image, 'rigid', optimizer, metric);
+            R(i,z) = corr2(registered_func_image,cur_stack_image);
+        end
+    end
+    warning('on',regwarning_id)
+    
+    %plot correlation by zoom/depth
+    figure()
+    plot(R)
+    legend({'z1.0','z1.33','z1.5','z1.66'})
+    xlabel('stack frame number')
+    ylabel('correlation coefficient')
+    [best_corrs,best_frames] = max(R);
+    [~,best_zoom_ind] = max(best_corrs);
+    
+    best_zoom = zoom_factors(best_zoom_ind);
+    best_frame = best_frames(best_zoom_ind);
+    title(['best frame: ' num2str(best_frame) ' (zoom ' num2str(best_zoom) ')'])
+    saveas(gcf,fullfile(analysis_folder,'stack_location_plot.png'))
 end
-warning('on',regwarning_id)
 
-%plot correlation by zoom/depth
-figure()
-plot(R)
-legend({'z1.0','z1.33','z1.5','z1.66'})
-xlabel('stack frame number')
-ylabel('correlation coefficient')
-[best_corrs,best_frames] = max(R);
-[~,best_zoom_ind] = max(best_corrs);
-best_zoom = zoom_factors(best_zoom_ind);
-best_frame = best_frames(best_zoom_ind);
-title(['best frame: ' num2str(best_frame) ' (zoom ' num2str(best_zoom) ')'])
-saveas(gcf,fullfile(analysis_folder,'stack_location_plot.png'))
-fprintf('functional plane correlated to plaque volume\n')
+fprintf('functional plane found in plaque volume\n')
 
 
-%% create overlay for manual verification
+%create overlay for manual verification
 if isvalid(wfig)
     waitbar(0.91,wfig,'creating imaging plane/stack overlay for manual verification')
 else
@@ -127,7 +143,20 @@ cur_stack_image = imhistmatchn(cur_stack_image,cur_func_image);
 
 ref_stack = imref2d(size(cur_stack_image));
 ref_func = imref2d(size(cur_func_image));
-tform = imregtform(cur_func_image, ref_func, cur_stack_image, ref_stack, 'rigid', optimizer, metric);
+if manual_registration
+    rotation_rad = deg2rad(rotation_angle); % convert rotation angle to radians
+    % create the transformation matrix
+    R = [cos(rotation_rad) -sin(rotation_rad) 0;
+         sin(rotation_rad)  cos(rotation_rad) 0;
+         0                 0                 1];
+    T = [1 0 x_translation;
+         0 1 y_translation;
+         0 0 1];
+    A = T*R; %rotation and translation
+    tform = rigidtform2d(A);
+else
+    tform = imregtform(cur_func_image, ref_func, cur_stack_image, ref_stack, 'rigid', optimizer, metric);
+end
 registered_func_image = imwarp(cur_func_image, tform, 'OutputView', ref_stack);
 %registered_func_image = imregister(cur_func_image, cur_stack_image, 'rigid', optimizer, metric);
 
@@ -211,6 +240,7 @@ binary_vol = plaques>threshold;
 cc = bwconncomp(binary_vol, 26); % 26-connectivity for 3D
 stats = regionprops3(cc, 'Volume', 'Centroid');
 min_plaque_radius = 5/mpp_z; %minimum radius, in pixels
+%based on: https://pubmed.ncbi.nlm.nih.gov/21136067/
 min_plaque_volume = (4/3)*pi*(min_plaque_radius^3);
 results.rawstats = stats;
 if isempty(stats)
@@ -295,3 +325,4 @@ saveas(gcf,fullfile(analysis_folder,'plaque_distance.png'))
 delete(wfig)
 save(fullfile(analysis_folder,'plaque_results.mat'),'results')
 fprintf('script finished\n')
+
